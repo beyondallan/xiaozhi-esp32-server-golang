@@ -27,6 +27,18 @@ chat_hooks:
     statistic_plugin:
       enabled: true
       priority: 100
+    nats_bridge:
+      enabled: true
+      priority: 50
+
+# NATS 消息总线配置
+nats:
+  url: "nats://nats:4222"          # NATS 服务器地址
+  max_reconnects: -1               # 无限重连
+  reconnect_wait: 2                # 重连等待时间（秒）
+  ping_interval: 30                # Ping 间隔（秒）
+  jetstream:
+    enabled: true                  # 启用 JetStream
 
 config_provider:          #对应domain/config/中的provider
   type: "manager"         #现在可以是 manager, redis

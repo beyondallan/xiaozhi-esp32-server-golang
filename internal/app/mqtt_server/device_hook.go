@@ -9,7 +9,13 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 
 	client "xiaozhi-esp32-server-golang/internal/data/msg"
+	natspkg "xiaozhi-esp32-server-golang/internal/pkg/nats"
 	log "xiaozhi-esp32-server-golang/logger"
+)
+
+const (
+	SubjectDeviceOnline  = "xiaozhi.device.online"
+	SubjectDeviceOffline = "xiaozhi.device.offline"
 )
 
 // DeviceHook 设备权限与自动订阅钩子
@@ -18,6 +24,7 @@ type DeviceHook struct {
 	mqttServer.HookBase
 	server           *mqttServer.Server
 	publishLifecycle func(event client.MqttLifecycleEvent) error
+	natsPublisher    natspkg.NATSPublisher
 }
 
 func (h *DeviceHook) ID() string {
@@ -101,6 +108,9 @@ func (h *DeviceHook) OnDisconnect(cl *mqttServer.Client, err error, ok bool) {
 	action := h.server.Topics.Unsubscribe(topic, cl.ID)
 	log.Infof("OnDisconnect: 取消订阅客户端 %s 到主题 %s, action=%v", cl.ID, topic, action)
 
+	// Publish NATS device offline event
+	h.publishDeviceNatsEvent(deviceID, mac, SubjectDeviceOffline)
+
 	return
 }
 
@@ -118,6 +128,9 @@ func (h *DeviceHook) OnSessionEstablished(cl *mqttServer.Client, pk packets.Pack
 	}
 	log.Infof("OnSessionEstablished: clientID=%s, deviceID=%s, mac=%s, clean=%v", cl.ID, deviceID, mac, pk.Connect.Clean)
 	h.publishLifecycleEvent(cl.ID, client.MqttLifecycleStateOnline)
+
+	// Publish NATS device online event
+	h.publishDeviceNatsEvent(deviceID, mac, SubjectDeviceOnline)
 
 	topic := deviceSubTopic(mac)
 
@@ -234,6 +247,25 @@ func (h *DeviceHook) publishLifecycleEvent(clientID string, state string) {
 	log.Infof("发布 MQTT 生命周期事件: device=%s, clientID=%s, state=%s, ts=%d", deviceID, clientID, state, event.Ts)
 	if err := h.publishLifecycle(event); err != nil {
 		log.Warnf("发布 MQTT 生命周期事件失败: device=%s state=%s err=%v", deviceID, state, err)
+	}
+}
+
+// publishDeviceNatsEvent publishes device online/offline event to NATS.
+func (h *DeviceHook) publishDeviceNatsEvent(deviceID, mac, subject string) {
+	if h == nil || h.natsPublisher == nil {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"device_id":  deviceID,
+		"device_sn":  mac,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if err := h.natsPublisher.Publish(subject, payload); err != nil {
+		log.Warnf("发布 NATS 设备事件失败: device=%s subject=%s err=%v", deviceID, subject, err)
+	} else {
+		log.Infof("发布 NATS 设备事件: device=%s subject=%s", deviceID, subject)
 	}
 }
 

@@ -30,6 +30,7 @@ require (
 	github.com/memodb-io/memobase/src/client/memobase-go v0.0.0-20251008012534-936f45328453
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/mochi-mqtt/server/v2 v2.7.9
+	github.com/nats-io/nats.go v1.39.0
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/sirupsen/logrus v1.9.3
@@ -88,6 +89,7 @@ require (
 	github.com/k2-fsa/sherpa-onnx-go-linux v1.12.4 // indirect
 	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.4 // indirect
 	github.com/k2-fsa/sherpa-onnx-go-windows v1.12.4 // indirect
+	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lestrrat-go/strftime v1.1.0 // indirect
@@ -97,6 +99,8 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
+	github.com/nats-io/nkeys v0.4.9 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/nikolalohinski/gonja v1.5.3 // indirect
 	github.com/ollama/ollama v0.5.12 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect

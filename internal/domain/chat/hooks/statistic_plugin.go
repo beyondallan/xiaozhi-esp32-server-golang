@@ -57,13 +57,19 @@ func BuiltinRegistrations() []Registration {
 		Kind:        PluginKindObserver,
 		Stage:       EventChatMetric,
 	}
-	return []Registration{{
+
+	registrations := []Registration{{
 		Meta:      meta,
 		Lifecycle: plugin,
 		Register: func(hub *Hub, meta PluginMeta) error {
 			return hub.RegisterObserver(EventChatMetric, meta, plugin.onMetric)
 		},
 	}}
+
+	// NATS bridge plugin is registered dynamically based on config
+	// See RegisterNatsBridgePlugin() for the registration logic
+
+	return registrations
 }
 
 func (p *statisticPlugin) onMetric(ctx Context, payload any) {
