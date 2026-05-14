@@ -190,6 +190,10 @@ func TestDeviceMediaRuntimeResumeIfInterruptedPauseOnlyResumesInterruptPause(t *
 
 	active := newActiveMediaPlayback(context.Background())
 	active.setPaused(true)
+	go func() {
+		<-active.ctx.Done()
+		active.closeDone()
+	}()
 
 	runtime.mu.Lock()
 	runtime.active = active

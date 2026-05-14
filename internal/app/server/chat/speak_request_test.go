@@ -13,6 +13,7 @@ import (
 	"xiaozhi-esp32-server-golang/internal/app/server/auth"
 	"xiaozhi-esp32-server-golang/internal/app/server/mqtt_udp"
 	types_conn "xiaozhi-esp32-server-golang/internal/app/server/types"
+	data_audio "xiaozhi-esp32-server-golang/internal/data/audio"
 	data_client "xiaozhi-esp32-server-golang/internal/data/client"
 	msgdata "xiaozhi-esp32-server-golang/internal/data/msg"
 	"xiaozhi-esp32-server-golang/internal/util"
@@ -112,6 +113,89 @@ func TestShouldSendSpeakRequestWhenMqttRebootstrapPendingIgnoresActiveConversati
 	}
 }
 
+func TestHandleHelloRejectsMissingAudioParamsBeforeSession(t *testing.T) {
+	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
+
+	err := manager.HandleHelloMessage(&data_client.ClientMessage{
+		Type:      msgdata.MessageTypeHello,
+		DeviceID:  manager.DeviceID,
+		Transport: types_conn.TransportTypeMqttUdp,
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "audio_params") {
+		t.Fatalf("expected missing audio_params error, got %v", err)
+	}
+	if manager.helloInited {
+		t.Fatal("expected invalid hello not to initialize hello state")
+	}
+	if manager.GetSession() != nil {
+		t.Fatal("expected invalid hello not to create ChatSession")
+	}
+	if conn.sentCmdCount() != 0 {
+		t.Fatalf("expected invalid hello not to send protocol commands, got %d", conn.sentCmdCount())
+	}
+}
+
+func TestHandleHelloRejectsUnsupportedTransportBeforeSession(t *testing.T) {
+	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
+
+	err := manager.HandleHelloMessage(&data_client.ClientMessage{
+		Type:      msgdata.MessageTypeHello,
+		DeviceID:  manager.DeviceID,
+		Transport: "invalid_transport",
+		AudioParams: &data_audio.AudioFormat{
+			SampleRate:    data_audio.SampleRate,
+			Channels:      data_audio.Channels,
+			FrameDuration: data_audio.FrameDuration,
+			Format:        data_audio.Format,
+		},
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "不支持的传输类型") {
+		t.Fatalf("expected unsupported transport error, got %v", err)
+	}
+	if manager.helloInited {
+		t.Fatal("expected invalid transport not to initialize hello state")
+	}
+	if manager.GetSession() != nil {
+		t.Fatal("expected invalid transport not to create ChatSession")
+	}
+	if conn.sentCmdCount() != 0 {
+		t.Fatalf("expected invalid transport not to send protocol commands, got %d", conn.sentCmdCount())
+	}
+}
+
+func TestServerTransportSendMqttHelloIncludesUDPConfig(t *testing.T) {
+	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
+	udpConfig := &msgdata.UdpConfig{
+		Server: "127.0.0.1",
+		Port:   12345,
+		Key:    "test-key",
+		Nonce:  "test-nonce",
+	}
+
+	if err := manager.serverTransport.SendHello(types_conn.TransportTypeMqttUdp, &manager.clientState.OutputAudioFormat, udpConfig); err != nil {
+		t.Fatalf("SendHello returned error: %v", err)
+	}
+
+	serverMsg := waitForServerMessageType(t, conn, msgdata.ServerMessageTypeHello, time.Second)
+	if serverMsg.Transport != types_conn.TransportTypeMqttUdp {
+		t.Fatalf("expected mqtt udp transport, got %s", serverMsg.Transport)
+	}
+	if serverMsg.AudioFormat == nil {
+		t.Fatal("expected hello response to include audio_params")
+	}
+	if serverMsg.Udp == nil {
+		t.Fatal("expected hello response to include udp config")
+	}
+	if *serverMsg.Udp != *udpConfig {
+		t.Fatalf("expected udp config %+v, got %+v", udpConfig, serverMsg.Udp)
+	}
+	if serverMsg.SessionID != manager.clientState.SessionID {
+		t.Fatalf("expected session_id %q, got %q", manager.clientState.SessionID, serverMsg.SessionID)
+	}
+}
+
 func TestPrepareSpeakPathForInjectedSpeechSendsSpeakRequestAndWaitsForReady(t *testing.T) {
 	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
 	manager.helloInited = true
@@ -160,6 +244,44 @@ func TestPrepareSpeakPathForInjectedSpeechSendsSpeakRequestAndWaitsForReady(t *t
 	}
 	if manager.pendingSpeakRequest != nil {
 		t.Fatal("expected pending speak_request to be cleared after speak_ready")
+	}
+}
+
+func TestPrepareSpeakPathForInjectedSpeechForwardsAutoListenFlag(t *testing.T) {
+	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
+	manager.helloInited = true
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- manager.prepareSpeakPathForInjectedSpeech("主动播报自动续听", true)
+	}()
+
+	serverMsg := waitForServerMessage(t, conn, 0)
+	if serverMsg.Type != msgdata.ServerMessageTypeSpeakRequest {
+		t.Fatalf("expected speak_request, got %s", serverMsg.Type)
+	}
+	if serverMsg.AutoListen == nil || !*serverMsg.AutoListen {
+		t.Fatal("expected speak_request auto_listen=true")
+	}
+
+	if err := manager.HandleSpeakReadyMessage(&data_client.ClientMessage{
+		Type:      msgdata.MessageTypeSpeakReady,
+		SessionID: manager.clientState.SessionID,
+		State:     msgdata.MessageStateReady,
+		SpeakUDPConfig: &data_client.SpeakReadyUDPConfig{
+			Ready: true,
+		},
+	}); err != nil {
+		t.Fatalf("HandleSpeakReadyMessage returned error: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("prepareSpeakPathForInjectedSpeech returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("prepareSpeakPathForInjectedSpeech did not unblock after speak_ready")
 	}
 }
 
@@ -423,6 +545,30 @@ func TestInjectMessageTimesOutWhenSessionBootstrapDoesNotFinish(t *testing.T) {
 	}
 }
 
+func TestHandleIoTMessageRespondsSuccessWithPayload(t *testing.T) {
+	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeWebsocket)
+
+	if err := manager.HandleIoTMessage(&data_client.ClientMessage{
+		Type:      msgdata.MessageTypeIot,
+		DeviceID:  manager.DeviceID,
+		SessionID: manager.clientState.SessionID,
+		Text:      "turn_on_light",
+	}); err != nil {
+		t.Fatalf("HandleIoTMessage returned error: %v", err)
+	}
+
+	serverMsg := waitForServerMessageType(t, conn, msgdata.ServerMessageTypeIot, time.Second)
+	if serverMsg.State != msgdata.MessageStateSuccess {
+		t.Fatalf("expected iot success state, got %s", serverMsg.State)
+	}
+	if serverMsg.Text != "turn_on_light" {
+		t.Fatalf("expected iot text to roundtrip, got %q", serverMsg.Text)
+	}
+	if serverMsg.SessionID != manager.clientState.SessionID {
+		t.Fatalf("expected iot session_id %q, got %q", manager.clientState.SessionID, serverMsg.SessionID)
+	}
+}
+
 func TestAddAsrResultToQueueWithOptionsCarriesPlaybackStartHook(t *testing.T) {
 	manager, _ := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
 	session := &ChatSession{
@@ -544,7 +690,7 @@ func TestAddTextToTTSQueueWithOptionsCarriesTurnEndPolicy(t *testing.T) {
 
 func TestTTSManagerFinishTtsStopDispatchesTurnEndPolicy(t *testing.T) {
 	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
-	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil)
+	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil, WithChatSessionCloseHandler(manager.handleSessionClosed))
 	manager.session = session
 
 	manager.lastSpeakPathWarmAt.Store(time.Now().UnixMilli())
@@ -586,7 +732,7 @@ func TestTTSManagerFinishTtsStopDispatchesTurnEndPolicy(t *testing.T) {
 
 func TestTTSManagerFinishTtsStopWaitsPlaybackGraceBeforeTurnEndGoodbye(t *testing.T) {
 	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
-	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil)
+	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil, WithChatSessionCloseHandler(manager.handleSessionClosed))
 	manager.session = session
 
 	ttsManager := session.ttsManager
@@ -621,7 +767,7 @@ func TestInjectedSpeechTTSTurnEndPolicy(t *testing.T) {
 
 func TestHandleMqttTransportReadyResetsConversationState(t *testing.T) {
 	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
-	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil)
+	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil, WithChatSessionCloseHandler(manager.handleSessionClosed))
 	manager.session = session
 
 	manager.lastSpeakPathWarmAt.Store(time.Now().UnixMilli())
@@ -822,9 +968,34 @@ func TestHandleListenMessageIgnoredWhenFreshHelloRequired(t *testing.T) {
 	}
 }
 
+func TestHandleListenMessageIgnoredBeforeHello(t *testing.T) {
+	manager, _ := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
+	manager.clientState.SetStatus(data_client.ClientStatusInit)
+	manager.clientState.SetListenPhase(data_client.ListenPhaseIdle)
+
+	if err := manager.HandleListenMessage(&data_client.ClientMessage{
+		Type:     msgdata.MessageTypeListen,
+		DeviceID: manager.DeviceID,
+		State:    msgdata.MessageStateStart,
+		Mode:     "manual",
+	}); err != nil {
+		t.Fatalf("HandleListenMessage returned error: %v", err)
+	}
+
+	if manager.GetSession() != nil {
+		t.Fatal("expected listen before hello not to create ChatSession")
+	}
+	if manager.clientState.GetStatus() != data_client.ClientStatusInit {
+		t.Fatalf("expected ignored listen before hello to keep status init, got %s", manager.clientState.GetStatus())
+	}
+	if manager.clientState.GetListenPhase() != data_client.ListenPhaseIdle {
+		t.Fatalf("expected ignored listen before hello to keep phase idle, got %s", manager.clientState.GetListenPhase())
+	}
+}
+
 func TestTTSManagerFinishTtsStopSkipsTurnEndPolicyWhenErr(t *testing.T) {
 	manager, conn := newSpeakRequestTestManager(types_conn.TransportTypeMqttUdp)
-	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil)
+	session := NewChatSession(manager.clientState, manager.serverTransport, nil, nil, WithChatSessionCloseHandler(manager.handleSessionClosed))
 	manager.session = session
 
 	ttsManager := session.ttsManager
@@ -870,6 +1041,21 @@ func newSpeakRequestTestManager(transportType string) (*ChatManager, *speakReque
 		SessionID:   "test-session",
 		ListenPhase: data_client.ListenPhaseIdle,
 		Status:      data_client.ClientStatusInit,
+		OutputAudioFormat: data_audio.AudioFormat{
+			SampleRate:    data_audio.SampleRate,
+			Channels:      data_audio.Channels,
+			FrameDuration: data_audio.FrameDuration,
+			Format:        data_audio.Format,
+		},
+		OpusAudioBuffer: make(chan []byte, 8),
+		AsrAudioBuffer: &data_client.AsrAudioBuffer{
+			PcmData:          make([]float32, 0),
+			AudioBufferMutex: sync.RWMutex{},
+		},
+		VoiceStatus: data_client.VoiceStatus{
+			SilenceThresholdTime: 400,
+		},
+		SessionCtx: data_client.Ctx{},
 	}
 	manager.transport = conn
 	manager.clientState = clientState

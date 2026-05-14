@@ -87,6 +87,7 @@ func TestLifecycleOnlineAlwaysTriggersTransportReadyCallback(t *testing.T) {
 		readyCalls++
 	}))
 	adapter.setUdpServer(NewUDPServer(0, "", 0))
+	adapter.SetDeviceSession("device-1", NewMqttUdpConn("device-1", "topic/device-1", nil, nil, newTestUdpSession()))
 	defer adapter.Stop()
 
 	onlinePayload := func(ts int64) []byte {
@@ -118,6 +119,7 @@ func TestLifecycleStaleOnlineDoesNotTriggerTransportReadyCallback(t *testing.T) 
 		readyCalls++
 	}))
 	adapter.setUdpServer(NewUDPServer(0, "", 0))
+	adapter.SetDeviceSession("device-1", NewMqttUdpConn("device-1", "topic/device-1", nil, nil, newTestUdpSession()))
 	defer adapter.Stop()
 
 	onlinePayload := func(ts int64) []byte {
@@ -137,6 +139,49 @@ func TestLifecycleStaleOnlineDoesNotTriggerTransportReadyCallback(t *testing.T) 
 
 	if readyCalls != 1 {
 		t.Fatalf("expected stale online broadcast to be ignored, got %d transport ready callbacks", readyCalls)
+	}
+}
+
+func TestLifecycleStaleOfflineDoesNotMarkFreshConnOffline(t *testing.T) {
+	adapter := NewMqttUdpAdapter(&MqttConfig{})
+	defer adapter.Stop()
+
+	session := newTestUdpSession()
+	conn := NewMqttUdpConn("device-1", "topic/device-1", nil, nil, session)
+	conn.MarkBrokerOnline()
+	adapter.SetDeviceSession("device-1", conn)
+
+	if notify, accepted := adapter.markDeviceOnline("device-1", 200); !accepted || !notify {
+		t.Fatalf("expected fresh online event to be accepted, got notify=%v accepted=%v", notify, accepted)
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"device_id": "device-1",
+		"state":     "offline",
+		"ts":        int64(100),
+	})
+	if err != nil {
+		t.Fatalf("marshal lifecycle payload failed: %v", err)
+	}
+
+	adapter.handleLifecycleMessage(payload)
+
+	if !conn.IsBrokerOnline() {
+		t.Fatal("expected stale offline event not to mark fresh conn offline")
+	}
+
+	state := adapter.getLifecycleState("device-1")
+	if state == nil {
+		t.Fatal("expected lifecycle state to remain")
+	}
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if !state.brokerOnline {
+		t.Fatal("expected lifecycle state to stay broker-online after stale offline")
+	}
+	if state.cleanupTimer != nil {
+		t.Fatal("expected stale offline event not to schedule cleanup")
 	}
 }
 

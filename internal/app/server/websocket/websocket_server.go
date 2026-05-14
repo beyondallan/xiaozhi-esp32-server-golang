@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -31,6 +32,7 @@ type WebSocketServer struct {
 
 	onNewConnection    types.OnNewConnection
 	onOpenClawResponse func(event openclaw.ResponseDelivery) bool
+	onInjectMessage    func(deviceID, message string, skipLlm bool, autoListen bool) error
 }
 
 // Option 类型定义
@@ -60,6 +62,12 @@ func WithOnNewConnection(onNewConnection types.OnNewConnection) WebSocketServerO
 func WithOnOpenClawResponse(handler func(event openclaw.ResponseDelivery) bool) WebSocketServerOption {
 	return func(s *WebSocketServer) {
 		s.onOpenClawResponse = handler
+	}
+}
+
+func WithOnInjectMessage(handler func(deviceID, message string, skipLlm bool, autoListen bool) error) WebSocketServerOption {
+	return func(s *WebSocketServer) {
+		s.onInjectMessage = handler
 	}
 }
 
@@ -232,5 +240,48 @@ func findQueryValue(values url.Values, keys []string) (string, string) {
 }
 
 func (s *WebSocketServer) handleInjectMsg(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.onInjectMessage == nil {
+		http.Error(w, "inject message handler unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
+	var req struct {
+		DeviceID   string `json:"device_id"`
+		Message    string `json:"message"`
+		SkipLlm    bool   `json:"skip_llm"`
+		AutoListen *bool  `json:"auto_listen"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	if req.DeviceID == "" {
+		http.Error(w, "device_id is required", http.StatusBadRequest)
+		return
+	}
+	if req.Message == "" {
+		http.Error(w, "message is required", http.StatusBadRequest)
+		return
+	}
+	autoListen := true
+	if req.AutoListen != nil {
+		autoListen = *req.AutoListen
+	}
+	if err := s.onInjectMessage(req.DeviceID, req.Message, req.SkipLlm, autoListen); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"device_id":   req.DeviceID,
+		"message":     req.Message,
+		"skip_llm":    req.SkipLlm,
+		"auto_listen": autoListen,
+	})
 }

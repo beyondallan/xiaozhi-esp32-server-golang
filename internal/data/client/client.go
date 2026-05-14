@@ -152,6 +152,9 @@ type ClientState struct {
 	// 异步获取声纹结果的回调函数（在 session 中设置）
 	OnVoiceSilenceSpeakerCallback func(ctx context.Context)
 
+	// 语音静默事件指标回调函数（在 session 中设置）
+	OnVoiceSilenceMetricCallback func(ctx context.Context, ts int64)
+
 	// ASR首次返回字符的回调函数（在 session 中设置）
 	OnAsrFirstTextCallback func(text string, isFinal bool)
 }
@@ -659,7 +662,11 @@ func (state *ClientState) OnManualStop() {
 }
 
 func (state *ClientState) OnVoiceSilence() {
+	silenceTs := time.Now().UnixMilli()
 	log.Debugf("OnVoiceSilence, voiceDuration: %d, voiceDurationInSession: %d", state.Vad.GetVoiceDuration(), state.Vad.GetVoiceDurationInSession())
+	if state.MarkVoiceSilenceAt(silenceTs) && state.OnVoiceSilenceMetricCallback != nil {
+		state.OnVoiceSilenceMetricCallback(state.Ctx, silenceTs)
+	}
 	state.Asr.ResetReceivedText()
 	state.SetClientVoiceStop(true) //设置停止说话标志位, 此时收到的音频数据不会进vad
 	//客户端停止说话
@@ -674,8 +681,6 @@ func (state *ClientState) OnVoiceSilence() {
 	if state.OnVoiceSilenceSpeakerCallback != nil {
 		state.OnVoiceSilenceSpeakerCallback(state.Ctx)
 	}
-
-	state.SetStartAsrTs()
 }
 
 type Llm struct {

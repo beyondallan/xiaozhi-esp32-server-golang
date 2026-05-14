@@ -28,7 +28,7 @@
       <el-table-column label="关联智能体" width="150">
         <template #default="{ row }">
           <span v-if="row.agent_id > 0">
-            智能体 {{ row.agent_id }}
+            {{ row.agent_name || `智能体 ${row.agent_id}` }}
           </span>
           <el-tag v-else type="info" size="small">未分配</el-tag>
         </template>
@@ -110,47 +110,12 @@
       :title="editingDevice ? '编辑设备' : '添加设备'"
       width="500px"
     >
-      <el-form :model="deviceForm" :rules="deviceRules" ref="deviceFormRef" label-width="100px">
-        <el-form-item label="用户ID" prop="user_id">
-          <el-input-number v-model="deviceForm.user_id" :min="1" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="设备昵称" prop="nick_name">
-          <el-input
-            v-model="deviceForm.nick_name"
-            placeholder="例如：客厅音箱、办公室小智"
-            maxlength="50"
-            show-word-limit
-            clearable
-          />
-        </el-form-item>
-        <el-form-item label="设备标识" prop="device_name">
-          <el-input
-            v-model="deviceForm.device_name"
-            :placeholder="editingDevice ? '请输入设备标识' : '请输入设备标识（与设备代码二选一）'"
-          />
-          <div class="form-tip">设备端上报的 Device-ID，用于在线状态、MCP 和语音推送，不建议随意修改。</div>
-        </el-form-item>
-        <el-form-item label="激活码" prop="device_code">
-          <el-input
-            v-model="deviceForm.device_code"
-            :placeholder="editingDevice ? '请输入激活码' : '请输入激活码（与设备标识二选一）'"
-          />
-        </el-form-item>
-        <el-form-item label="激活状态" prop="activated">
-          <el-switch v-model="deviceForm.activated" />
-        </el-form-item>
-        <el-form-item label="关联智能体" prop="agent_id">
-          <el-select v-model="deviceForm.agent_id" placeholder="请选择智能体" style="width: 100%" clearable>
-            <el-option label="不关联智能体" :value="0" />
-            <el-option 
-              v-for="agent in agents" 
-              :key="agent.id" 
-              :label="`${agent.name} (用户${agent.user_id})`" 
-              :value="agent.id" 
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
+      <DeviceForm
+        ref="deviceFormRef"
+        v-model="deviceForm"
+        is-admin
+        :mode="editingDevice ? 'edit' : 'create'"
+      />
       <template #footer>
         <el-button @click="showAddDialog = false">取消</el-button>
         <el-button type="primary" @click="saveDevice" :loading="saving">
@@ -166,10 +131,10 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import api from '../../utils/api'
-import { useAuthStore } from '../../stores/auth'
+import DeviceForm from '../../components/common/DeviceForm.vue'
+import { createDefaultDeviceForm, deviceToForm } from '../../composables/useAgentFormOptions'
 
 const devices = ref([])
-const agents = ref([])
 const loading = ref(false)
 const showAddDialog = ref(false)
 const editingDevice = ref(null)
@@ -184,66 +149,7 @@ const currentDeviceId = ref(null)
 const mcpTools = ref([])
 const mcpCallResult = ref('')
 const mcpCallForm = ref({ tool_name: '', argumentsText: '{}' })
-const authStore = useAuthStore()
-
-const deviceForm = ref({
-  user_id: authStore.user?.id || null,
-  nick_name: '',
-  device_code: '',
-  device_name: '',
-  activated: true,
-  agent_id: 0
-})
-
-const deviceRules = {
-  user_id: [{ required: true, message: '请输入用户ID', trigger: 'blur' }],
-  device_code: [
-    {
-      validator: (rule, value, callback) => {
-        // 如果是编辑模式，激活码必填
-        if (editingDevice.value) {
-          if (!value) {
-            callback(new Error('请输入激活码'))
-          } else {
-            callback()
-          }
-          return
-        }
-        
-        // 如果是新增模式，激活码和设备标识至少填一个
-        if (!value && !deviceForm.value.device_name) {
-          callback(new Error('激活码和设备标识至少填写一个'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur'
-    }
-  ],
-  device_name: [
-    {
-      validator: (rule, value, callback) => {
-        // 如果是编辑模式，设备标识必填
-        if (editingDevice.value) {
-          if (!value) {
-            callback(new Error('请输入设备标识'))
-          } else {
-            callback()
-          }
-          return
-        }
-        
-        // 如果是新增模式，激活码和设备标识至少填一个
-        if (!value && !deviceForm.value.device_code) {
-          callback(new Error('激活码和设备标识至少填写一个'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur'
-    }
-  ]
-}
+const deviceForm = ref(createDefaultDeviceForm({ isAdmin: true }))
 
 const loadDevices = async () => {
   loading.value = true
@@ -258,16 +164,6 @@ const loadDevices = async () => {
   }
 }
 
-const loadAgents = async () => {
-  try {
-    const response = await api.get('/admin/agents')
-    agents.value = response.data.data || []
-  } catch (error) {
-    ElMessage.error('加载智能体列表失败')
-    console.error('Error loading agents:', error)
-  }
-}
-
 const getDeviceDisplayName = (device) => {
   const nickName = String(device?.nick_name || '').trim()
   if (nickName) return nickName
@@ -276,40 +172,13 @@ const getDeviceDisplayName = (device) => {
 
 const openAddDialog = () => {
   editingDevice.value = null
-  deviceForm.value = {
-    user_id: authStore.user?.id || null,
-    nick_name: '',
-    device_code: '',
-    device_name: '',
-    activated: true,
-    agent_id: 0
-  }
+  deviceForm.value = createDefaultDeviceForm({ isAdmin: true })
   showAddDialog.value = true
-}
-
-// 验证激活码是否存在
-const validateDeviceCode = async (deviceCode) => {
-  if (!deviceCode) return null
-  
-  try {
-    const response = await api.get(`/admin/devices/validate-code?code=${deviceCode}`)
-    return response.data.exists
-  } catch (error) {
-    console.error('验证激活码失败:', error)
-    return null
-  }
 }
 
 const editDevice = (device) => {
   editingDevice.value = device
-  deviceForm.value = {
-    user_id: device.user_id,
-    nick_name: device.nick_name || '',
-    device_code: device.device_code,
-    device_name: device.device_name,
-    activated: device.activated,
-    agent_id: device.agent_id || 0
-  }
+  deviceForm.value = deviceToForm(device, { isAdmin: true })
   showAddDialog.value = true
 }
 
@@ -321,11 +190,12 @@ const saveDevice = async () => {
 
   saving.value = true
   try {
+    const payload = deviceFormRef.value.buildPayload()
     if (editingDevice.value) {
-      await api.put(`/admin/devices/${editingDevice.value.id}`, deviceForm.value)
+      await api.put(`/admin/devices/${editingDevice.value.id}`, payload)
       ElMessage.success('设备更新成功')
     } else {
-      const response = await api.post('/admin/devices', deviceForm.value)
+      const response = await api.post('/admin/devices', payload)
       // 根据后端返回的消息显示不同的提示
       const message = response.data.message || '设备添加成功'
       ElMessage.success(message)
@@ -533,14 +403,7 @@ const callDeviceMcpTool = async () => {
 
 const resetForm = () => {
   editingDevice.value = null
-  deviceForm.value = {
-    user_id: authStore.user?.id || null,
-    nick_name: '',
-    device_code: '',
-    device_name: '',
-    activated: true,
-    agent_id: 0
-  }
+  deviceForm.value = createDefaultDeviceForm({ isAdmin: true })
   if (deviceFormRef.value) {
     deviceFormRef.value.resetFields()
   }
@@ -557,7 +420,6 @@ const isDeviceOnline = (lastActiveAt) => {
 
 onMounted(() => {
   loadDevices()
-  loadAgents()
 })
 </script>
 

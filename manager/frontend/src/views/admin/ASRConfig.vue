@@ -20,7 +20,11 @@
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="name" label="配置名称" />
       <el-table-column prop="config_id" label="配置ID" width="150" />
-      <el-table-column prop="provider" label="提供商" />
+      <el-table-column prop="provider" label="提供商">
+        <template #default="scope">
+          {{ scope.row.provider }}
+        </template>
+      </el-table-column>
       <el-table-column prop="enabled" label="启用状态" width="80" align="center">
         <template #default="scope">
           <el-switch 
@@ -107,6 +111,7 @@ import { Plus } from '@element-plus/icons-vue'
 import api from '../../utils/api'
 import { testSingleConfig, testWithData, parseJsonData } from '../../utils/configTest'
 import ASRConfigForm from './forms/ASRConfigForm.vue'
+import { resolveASRProvider } from './forms/configProviderUtils'
 
 const configs = ref([])
 const testingId = ref(null)
@@ -277,7 +282,7 @@ const loadConfigs = async () => {
   loading.value = true
   try {
     const response = await api.get('/admin/asr-configs')
-    configs.value = response.data.data || []
+    configs.value = (response.data.data || []).map(normalizeASRConfigRow)
   } catch (error) {
     ElMessage.error('加载配置失败')
   } finally {
@@ -285,7 +290,16 @@ const loadConfigs = async () => {
   }
 }
 
+function normalizeASRConfigRow(row) {
+  const data = parseJsonData(row?.json_data)
+  return {
+    ...row,
+    provider: resolveASRProvider(row?.provider, row?.config_id, data)
+  }
+}
+
 const editConfig = (config) => {
+  config = normalizeASRConfigRow(config)
   editingConfig.value = config
   form.name = config.name
   form.config_id = config.config_id

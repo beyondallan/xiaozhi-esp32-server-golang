@@ -35,6 +35,7 @@ type AudioQueueElem struct {
 	Err         error  // SentenceEnd 时可选，表示本段错误
 	IsStart     bool   // SentenceStart 时：是否为首包（用于统计）
 	Generation  uint64 // 代际标识，打断后旧代际元素将被丢弃
+	MetricCycle uint64 // TTS 指标轮次，TTS 音频首帧发送时用于归属当前轮
 	DebugReason string
 	OnStart     func()
 	OnEnd       func(error)
@@ -325,6 +326,7 @@ func (t *TTSManager) runSenderLoop(ctx context.Context) {
 					continue
 				}
 				if elem.Kind == AudioQueueKindFrame {
+					t.markTtsMetricFirstAudio(t.clientState.Ctx, elem.MetricCycle)
 					t.audioMutex.Lock()
 					frameCopy := make([]byte, len(elem.Data))
 					copy(frameCopy, elem.Data)
@@ -1390,7 +1392,7 @@ func (t *TTSManager) handleTts(ctx context.Context, generation uint64, metricCyc
 			}
 			frameCopy := make([]byte, len(frame))
 			copy(frameCopy, frame)
-			if !t.enqueueSessionElem(ctx, generation, AudioQueueElem{Kind: AudioQueueKindFrame, Data: frameCopy}) {
+			if !t.enqueueSessionElem(ctx, generation, AudioQueueElem{Kind: AudioQueueKindFrame, Data: frameCopy, MetricCycle: metricCycle}) {
 				if release != nil {
 					release()
 				}
@@ -1889,7 +1891,7 @@ func (t *TTSManager) handleDualStreamTts(item TTSQueueItem) (bool, error) {
 			}
 			frameCopy := make([]byte, len(event.Audio))
 			copy(frameCopy, event.Audio)
-			if !t.enqueueSessionElem(item.ctx, item.generation, AudioQueueElem{Kind: AudioQueueKindFrame, Data: frameCopy}) {
+			if !t.enqueueSessionElem(item.ctx, item.generation, AudioQueueElem{Kind: AudioQueueKindFrame, Data: frameCopy, MetricCycle: item.metricCycle}) {
 				finishRequest(item.ctx.Err())
 				if item.onEndFunc != nil {
 					item.onEndFunc(item.ctx.Err())
@@ -2006,7 +2008,7 @@ func (t *TTSManager) handleStreamTts(item TTSQueueItem) error {
 					}
 					frameCopy := make([]byte, len(frame))
 					copy(frameCopy, frame)
-					if !t.enqueueSessionElem(item.ctx, item.generation, AudioQueueElem{Kind: AudioQueueKindFrame, Data: frameCopy}) {
+					if !t.enqueueSessionElem(item.ctx, item.generation, AudioQueueElem{Kind: AudioQueueKindFrame, Data: frameCopy, MetricCycle: item.metricCycle}) {
 						if release != nil {
 							release()
 						}

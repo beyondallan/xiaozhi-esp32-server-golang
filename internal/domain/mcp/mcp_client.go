@@ -444,8 +444,7 @@ func GetReportedToolByAgentIDAndName(agentId, toolName string) (tool.InvokableTo
 		return nil, false
 	}
 
-	invokable, ok := reportedTools[toolName]
-	return invokable, ok
+	return findInvokableToolByName(reportedTools, toolName)
 }
 
 func RawCallReportedToolByDeviceID(deviceId, toolName string, arguments map[string]interface{}) (string, bool, error) {

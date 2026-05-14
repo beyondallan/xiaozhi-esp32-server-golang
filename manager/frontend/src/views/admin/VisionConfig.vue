@@ -162,6 +162,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import api from '../../utils/api'
+import { resolveVisionProvider } from './forms/configProviderUtils'
 
 const configs = ref([])
 const loading = ref(false)
@@ -203,6 +204,7 @@ const form = reactive({
 
 const generateConfig = () => {
   return JSON.stringify({
+    provider: form.provider,
     type: form.type,
     model_name: form.model_name,
     api_key: form.api_key,
@@ -226,6 +228,22 @@ const rules = {
   ],
   max_tokens: [{ required: true, message: '请输入最大令牌数', trigger: 'blur' }],
   timeout: [{ required: true, message: '请输入超时时间', trigger: 'blur' }]
+}
+
+const parseJsonData = (jsonData) => {
+  try {
+    return JSON.parse(jsonData || '{}')
+  } catch (error) {
+    return {}
+  }
+}
+
+const normalizeVisionConfigRow = (config) => {
+  const data = parseJsonData(config.json_data)
+  return {
+    ...config,
+    provider: resolveVisionProvider(config.provider, config.config_id, data)
+  }
 }
 
 // 加载基础配置
@@ -268,7 +286,7 @@ const loadConfigs = async () => {
     const response = await api.get('/admin/vision-configs')
     // 过滤掉vision_base配置，确保不在列表中显示
     const allConfigs = response.data.data || []
-    configs.value = allConfigs.filter(config => config.config_id !== 'vision_base')
+    configs.value = allConfigs.filter(config => config.config_id !== 'vision_base').map(normalizeVisionConfigRow)
   } catch (error) {
     ElMessage.error('加载配置失败')
   } finally {
@@ -277,14 +295,15 @@ const loadConfigs = async () => {
 }
 
 const editConfig = (config) => {
-  editingConfig.value = config
-  form.name = config.name
-  form.provider = config.provider
-  form.is_default = config.is_default
-  form.enabled = config.enabled
+  const normalizedConfig = normalizeVisionConfigRow(config)
+  editingConfig.value = normalizedConfig
+  form.name = normalizedConfig.name
+  form.provider = normalizedConfig.provider
+  form.is_default = normalizedConfig.is_default
+  form.enabled = normalizedConfig.enabled
   
   try {
-    const configData = JSON.parse(config.json_data || '{}')
+    const configData = parseJsonData(normalizedConfig.json_data)
     form.type = configData.type || ''
     form.model_name = configData.model_name || ''
     form.api_key = configData.api_key || ''

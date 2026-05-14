@@ -67,7 +67,7 @@ X-API-Token: &lt;api-token&gt;</code></pre>
         <div class="api-line"><span class="method get">GET</span><code>/api/open/v1/agents</code></div>
         <h4>入参</h4><p>无（仅需认证头）。</p>
         <h4>出参示例</h4>
-        <pre><code>{"data":[{"id":2,"name":"家庭助手","nickname":"小辉","status":"active","llm_config_id":"llm_default"}]}</code></pre>
+        <pre><code>{"data":[{"id":2,"name":"家庭助手","nickname":"小辉","llm_config_id":"llm_default"}]}</code></pre>
 
         <h3>3.2 创建智能体</h3>
         <div class="api-line"><span class="method post">POST</span><code>/api/open/v1/agents</code></div>
@@ -83,7 +83,7 @@ X-API-Token: &lt;api-token&gt;</code></pre>
           <tr><td>memory_mode</td><td>string</td><td>否</td><td>short/long/none</td></tr>
         </tbody></table>
         <h4>出参示例</h4>
-        <pre><code>{"success":true,"data":{"id":3,"name":"客厅助手","nickname":"小辉","status":"active"}}</code></pre>
+        <pre><code>{"success":true,"data":{"id":3,"name":"客厅助手","nickname":"小辉"}}</code></pre>
 
         <h3>3.3 获取智能体详情</h3>
         <div class="api-line"><span class="method get">GET</span><code>/api/open/v1/agents/:id</code></div>

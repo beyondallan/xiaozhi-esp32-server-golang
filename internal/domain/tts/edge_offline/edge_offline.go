@@ -149,8 +149,9 @@ func (p *EdgeOfflineTTSProvider) TextToSpeech(ctx context.Context, text string, 
 		return nil, fmt.Errorf("创建音频解码器失败: %v", err)
 	}
 
-	// 启动解码器
+	decoderDone := make(chan struct{})
 	go func() {
+		defer close(decoderDone)
 		if err := audioDecoder.Run(startTs); err != nil {
 			log.Errorf("音频解码失败: %v", err)
 		}
@@ -190,18 +191,25 @@ func (p *EdgeOfflineTTSProvider) TextToSpeech(ctx context.Context, text string, 
 	}()
 
 	// 收集所有的Opus帧
+	collectorDone := make(chan struct{})
 	go func() {
 		for frame := range outputChan {
 			frames = append(frames, frame)
 		}
+		close(collectorDone)
 	}()
 
 	// 等待完成或超时
 	select {
 	case <-ctx.Done():
+		_ = pipeWriter.CloseWithError(ctx.Err())
+		p.clearConnection()
+		<-decoderDone
+		<-collectorDone
 		return nil, fmt.Errorf("TTS合成超时或被取消")
 	case <-done:
-		close(outputChan)
+		<-decoderDone
+		<-collectorDone
 		return frames, nil
 	}
 }
@@ -218,6 +226,7 @@ func (p *EdgeOfflineTTSProvider) TextToSpeechStream(ctx context.Context, text st
 		conn, err := p.getConnection(ctx)
 		if err != nil {
 			p.sendMutex.Unlock()
+			close(outputChan)
 			log.Errorf("获取WebSocket连接失败: %v", err)
 			return
 		}
@@ -226,6 +235,7 @@ func (p *EdgeOfflineTTSProvider) TextToSpeechStream(ctx context.Context, text st
 		err = p.writeMessage(conn, websocket.TextMessage, []byte(text))
 		if err != nil {
 			p.sendMutex.Unlock()
+			close(outputChan)
 			log.Errorf("发送文本失败: %v，清空连接", err)
 			// 发送失败，清空连接，下次使用时自动重连
 			p.clearConnection()
@@ -234,34 +244,36 @@ func (p *EdgeOfflineTTSProvider) TextToSpeechStream(ctx context.Context, text st
 
 		// 创建管道用于音频数据传输
 		pipeReader, pipeWriter := io.Pipe()
-		defer func() {
-			pipeWriter.Close()
-			// 读取完成后释放锁
-			log.Debugf("TextToSpeechStream read completed, release sendMutex")
+		startTs := time.Now().UnixMilli()
+		audioDecoder, err := util.CreateAudioDecoderWithSampleRate(ctx, pipeReader, outputChan, frameDuration, "pcm", sampleRate)
+		if err != nil {
 			p.sendMutex.Unlock()
-		}()
+			_ = pipeReader.Close()
+			_ = pipeWriter.Close()
+			close(outputChan)
+			log.Errorf("创建音频解码器失败: %v", err)
+			return
+		}
+		audioDecoder.WithFormat(beep.Format{
+			SampleRate:  beep.SampleRate(24000),
+			NumChannels: channels,
+			Precision:   2,
+		})
 
-		// 启动解码器（解码器会在 defer 中自动关闭 outputChan）
+		decoderDone := make(chan struct{})
 		go func() {
-
-			startTs := time.Now().UnixMilli()
-			// 创建音频解码器
-			audioDecoder, err := util.CreateAudioDecoderWithSampleRate(ctx, pipeReader, outputChan, frameDuration, "pcm", sampleRate)
-			if err != nil {
-				log.Errorf("创建音频解码器失败: %v", err)
-				return
-			}
-
-			audioDecoder.WithFormat(beep.Format{
-				SampleRate:  beep.SampleRate(24000),
-				NumChannels: channels,
-				Precision:   2,
-			})
-
-			// 解码器会在 defer 中自动关闭 outputChan
+			defer close(decoderDone)
 			if err := audioDecoder.Run(startTs); err != nil {
 				log.Errorf("音频解码失败: %v", err)
 			}
+		}()
+
+		defer func() {
+			_ = pipeWriter.Close()
+			<-decoderDone
+			// 读取完成后释放锁
+			log.Debugf("TextToSpeechStream read completed, release sendMutex")
+			p.sendMutex.Unlock()
 		}()
 
 		// 接收WebSocket数据并写入管道（读取过程中持有锁，确保串行化）

@@ -456,6 +456,15 @@ func (c *ChatManager) HandleHelloMessage(msg *ClientMessage) error {
 	if msg.AudioParams == nil {
 		return fmt.Errorf("hello消息缺少audio_params")
 	}
+	transportType := strings.TrimSpace(msg.Transport)
+	if transportType == "" && c.serverTransport != nil {
+		transportType = c.serverTransport.GetTransportType()
+	}
+	switch transportType {
+	case types_conn.TransportTypeWebsocket, types_conn.TransportTypeMqttUdp:
+	default:
+		return fmt.Errorf("不支持的传输类型: %s", transportType)
+	}
 
 	c.helloMu.Lock()
 	defer c.helloMu.Unlock()
@@ -1061,6 +1070,11 @@ func (c *ChatManager) handleSessionClosed(session *ChatSession, reason string) {
 			log.Warnf("关闭 websocket transport 失败: %v", err)
 		}
 	case types_conn.TransportTypeMqttUdp:
+		if reason == chatSessionCloseReasonRetainedIdleTimeout {
+			c.setNeedFreshHello(true)
+			c.resetSpeakPathAfterServerSessionClose(reason)
+			return
+		}
 		if !shouldSendMqttGoodbyeOnSessionClose(reason) {
 			return
 		}
@@ -1076,8 +1090,7 @@ func shouldSendMqttGoodbyeOnSessionClose(reason string) bool {
 	switch reason {
 	case chatSessionCloseReasonExplicitExit,
 		chatSessionCloseReasonFatalError,
-		chatSessionCloseReasonAudioIdleTimeout,
-		chatSessionCloseReasonRetainedIdleTimeout:
+		chatSessionCloseReasonAudioIdleTimeout:
 		return true
 	default:
 		return false

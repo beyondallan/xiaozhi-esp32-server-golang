@@ -1,12 +1,15 @@
 package database
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"xiaozhi/manager/backend/config"
 	"xiaozhi/manager/backend/models"
+	"xiaozhi/manager/backend/services/configprovider"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
@@ -80,16 +83,75 @@ func Init(cfg config.DatabaseConfig) *gorm.DB {
 	}
 	log.Println("数据库表结构迁移成功")
 
+	if err := dropDeprecatedAgentStatusColumn(db); err != nil {
+		log.Printf("删除旧智能体状态字段失败: %v", err)
+	}
+
 	// 迁移现有全局角色数据到新的 roles 表
 	log.Println("检查是否需要迁移全局角色数据...")
 	if err := migrateGlobalRolesToRoles(db); err != nil {
 		log.Printf("迁移全局角色数据失败: %v", err)
 		// 迁移失败不影响启动，只是数据没有迁移
 	}
+	if err := repairConfigProviders(db); err != nil {
+		log.Printf("修复配置provider失败: %v", err)
+	}
 	return db
 }
 
+func dropDeprecatedAgentStatusColumn(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&models.Agent{}) {
+		return nil
+	}
+	hasColumn, err := hasDatabaseColumn(db, "agents", "status")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		return nil
+	}
+	err = db.Exec("ALTER TABLE agents DROP COLUMN status").Error
+	if err != nil {
+		return err
+	}
+	log.Println("已删除旧智能体状态字段 agents.status")
+	return nil
+}
+
+func hasDatabaseColumn(db *gorm.DB, tableName, columnName string) (bool, error) {
+	switch db.Dialector.Name() {
+	case "sqlite":
+		var columns []struct {
+			Name string `gorm:"column:name"`
+		}
+		if err := db.Raw(fmt.Sprintf("PRAGMA table_info(%s)", tableName)).Scan(&columns).Error; err != nil {
+			return false, err
+		}
+		for _, column := range columns {
+			if column.Name == columnName {
+				return true, nil
+			}
+		}
+		return false, nil
+	case "mysql":
+		var count int64
+		if err := db.Raw(
+			"SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+			tableName,
+			columnName,
+		).Scan(&count).Error; err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	default:
+		return db.Migrator().HasColumn(tableName, columnName), nil
+	}
+}
+
 func Close(db *gorm.DB) {
+	if db == nil {
+		return
+	}
 	sqlDB, err := db.DB()
 	if err != nil {
 		log.Println("获取数据库连接失败:", err)
@@ -155,5 +217,60 @@ func migrateGlobalRolesToRoles(db *gorm.DB) error {
 	}
 
 	log.Println("全局角色数据迁移完成")
+	return nil
+}
+
+func repairConfigProviders(db *gorm.DB) error {
+	var configs []models.Config
+	if err := db.Where("type IN ?", []string{"vad", "asr", "llm", "tts", "memory", "vision"}).Find(&configs).Error; err != nil {
+		return err
+	}
+
+	repaired := 0
+	for _, cfg := range configs {
+		var data map[string]interface{}
+		if cfg.JsonData != "" {
+			if err := json.Unmarshal([]byte(cfg.JsonData), &data); err != nil {
+				log.Printf("跳过provider修复，json_data解析失败 type=%s config_id=%s: %v", cfg.Type, cfg.ConfigID, err)
+				continue
+			}
+		}
+		if data == nil {
+			data = map[string]interface{}{}
+		}
+
+		provider := configprovider.NormalizeExistingProvider(cfg.Type, cfg.Provider, cfg.ConfigID, data)
+		if provider == "" || provider == cfg.Provider {
+			if jsonProvider, _ := data["provider"].(string); strings.TrimSpace(jsonProvider) == "" || strings.EqualFold(strings.TrimSpace(jsonProvider), provider) {
+				continue
+			}
+		}
+
+		updates := map[string]interface{}{}
+		if provider != "" && provider != cfg.Provider {
+			updates["provider"] = provider
+		}
+		if provider != "" {
+			if jsonProvider, _ := data["provider"].(string); !strings.EqualFold(strings.TrimSpace(jsonProvider), provider) {
+				data["provider"] = provider
+				bytes, err := json.Marshal(data)
+				if err != nil {
+					return err
+				}
+				updates["json_data"] = string(bytes)
+			}
+		}
+		if len(updates) == 0 {
+			continue
+		}
+		if err := db.Model(&models.Config{}).Where("id = ?", cfg.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		repaired++
+	}
+
+	if repaired > 0 {
+		log.Printf("已修复 %d 条配置provider", repaired)
+	}
 	return nil
 }

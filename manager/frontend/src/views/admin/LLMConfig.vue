@@ -233,7 +233,13 @@ const loadConfigs = async () => {
   loading.value = true
   try {
     const response = await api.get('/admin/llm-configs')
-    configs.value = response.data.data || []
+    configs.value = (response.data.data || []).map((row) => {
+      const configObj = parseJsonData(row?.json_data)
+      return {
+        ...row,
+        provider: resolveLLMProvider(row?.provider, configObj?.type)
+      }
+    })
   } catch (error) {
     ElMessage.error('加载配置失败')
   } finally {

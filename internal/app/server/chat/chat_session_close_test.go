@@ -143,7 +143,7 @@ func TestHandleSessionClosedSendsMqttGoodbyeOnFatalError(t *testing.T) {
 	}
 }
 
-func TestHandleSessionClosedSendsMqttGoodbyeOnRetainedIdleTimeout(t *testing.T) {
+func TestHandleSessionClosedSkipsMqttGoodbyeOnRetainedIdleTimeout(t *testing.T) {
 	fakeConn := &sessionCloseTestConn{
 		deviceID:      "device-1",
 		transportType: types_conn.TransportTypeMqttUdp,
@@ -165,7 +165,9 @@ func TestHandleSessionClosedSendsMqttGoodbyeOnRetainedIdleTimeout(t *testing.T) 
 	if fakeConn.closeAudioCalls != 0 {
 		t.Fatalf("expected CloseAudioChannel to be skipped on retained_idle_timeout, got %d", fakeConn.closeAudioCalls)
 	}
-	assertSingleGoodbyeCommand(t, fakeConn, "session-1")
+	if len(fakeConn.sentCmds) != 0 {
+		t.Fatalf("expected retained_idle_timeout to avoid sending mqtt goodbye, got %d commands", len(fakeConn.sentCmds))
+	}
 	if !manager.helloInited {
 		t.Fatalf("expected helloInited to stay true after retained_idle_timeout")
 	}

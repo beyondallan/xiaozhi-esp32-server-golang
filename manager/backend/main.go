@@ -22,6 +22,9 @@ func main() {
 
 	// 初始化数据库
 	db := database.Init(cfg.Database)
+	if db == nil {
+		log.Fatal("数据库初始化失败，服务退出")
+	}
 	defer database.Close(db)
 
 	// 设置Gin模式

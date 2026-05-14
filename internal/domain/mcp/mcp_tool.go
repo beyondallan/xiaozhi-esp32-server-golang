@@ -26,6 +26,7 @@ type LocalToolHandler func(ctx context.Context, argumentsInJSON string) (string,
 // mcpTool MCP工具实现，支持远程和本地工具
 type McpTool struct {
 	info       *schema.ToolInfo
+	originName string
 	serverName string
 	client     *client.Client
 
@@ -37,6 +38,48 @@ type McpTool struct {
 // Info 获取工具信息，实现BaseTool接口
 func (t *McpTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	return t.info, nil
+}
+
+func (t *McpTool) callName() string {
+	if t.originName != "" {
+		return t.originName
+	}
+	if t.info != nil {
+		return t.info.Name
+	}
+	return ""
+}
+
+func mcpToolMatchesName(invokable tool.InvokableTool, name string) bool {
+	mcpTool, ok := invokable.(*McpTool)
+	if !ok || mcpTool == nil {
+		return false
+	}
+	if mcpTool.info != nil && mcpTool.info.Name == name {
+		return true
+	}
+	return mcpTool.originName != "" && mcpTool.originName == name
+}
+
+func findInvokableToolByName(tools map[string]tool.InvokableTool, name string) (tool.InvokableTool, bool) {
+	if invokable, ok := tools[name]; ok {
+		return invokable, true
+	}
+	for _, invokable := range tools {
+		if mcpToolMatchesName(invokable, name) {
+			return invokable, true
+		}
+	}
+	return nil, false
+}
+
+func remoteCallNameForTool(invokable tool.InvokableTool, fallback string) string {
+	if mcpTool, ok := invokable.(*McpTool); ok && mcpTool != nil {
+		if name := mcpTool.callName(); name != "" {
+			return name
+		}
+	}
+	return fallback
 }
 
 func (t *McpTool) InvokeableLocalRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
@@ -85,9 +128,10 @@ func (t *McpTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts
 	}
 
 	// 准备调用请求
+	toolName := t.callName()
 	callRequest := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name:      t.info.Name,
+			Name:      toolName,
 			Arguments: arguments,
 		},
 	}

@@ -571,11 +571,14 @@ func (s *MqttUdpAdapter) handleLifecycleMessage(payload []byte) {
 			s.onTransportReady(deviceID)
 		}
 	case msgdata.MqttLifecycleStateOffline:
+		notifyOffline, cleanupVersion := s.markDeviceOffline(deviceID, lifecycleEvent.Ts)
+		if cleanupVersion == 0 {
+			return
+		}
 		conn := s.getDeviceSession(deviceID)
 		if conn != nil {
 			conn.MarkBrokerOffline(s.offlineGracePeriod)
 		}
-		notifyOffline, _ := s.markDeviceOffline(deviceID, lifecycleEvent.Ts)
 		if notifyOffline && s.onDeviceOffline != nil {
 			s.onDeviceOffline(deviceID)
 		}

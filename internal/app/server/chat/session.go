@@ -139,6 +139,10 @@ func NewChatSession(clientState *ClientState, serverTransport *ServerTransport, 
 	s.mediaPlayer = NewSessionMediaPlayer(s)
 	s.llmManager = NewLLMManager(clientState, serverTransport, s.ttsManager, s, transformRegistry)
 
+	clientState.OnVoiceSilenceMetricCallback = func(ctx context.Context, ts int64) {
+		s.TraceVoiceSilence(ctx, ts)
+	}
+
 	// 如果启用声纹识别，创建声纹管理器
 	if clientState.IsSpeakerEnabled() {
 		// 从系统配置（viper）获取声纹服务地址
@@ -1910,6 +1914,10 @@ func (s *ChatSession) TraceTurnEnd(ctx context.Context, ts int64, err error) {
 	s.emitMetricStage(ctx, chathooks.MetricTurnEnd, ts, err)
 }
 
+func (s *ChatSession) TraceVoiceSilence(ctx context.Context, ts int64) {
+	s.emitMetricStage(ctx, chathooks.MetricVoiceSilence, ts, nil)
+}
+
 func (s *ChatSession) TraceAsrFirstText(ctx context.Context, ts int64) {
 	s.emitMetricStage(ctx, chathooks.MetricAsrFirstText, ts, nil)
 }
@@ -1924,6 +1932,10 @@ func (s *ChatSession) TraceLlmStart(ctx context.Context, ts int64) {
 
 func (s *ChatSession) TraceLlmFirstToken(ctx context.Context, ts int64) {
 	s.emitMetricStage(ctx, chathooks.MetricLlmFirstToken, ts, nil)
+}
+
+func (s *ChatSession) TraceLlmFirstSentence(ctx context.Context, ts int64) {
+	s.emitMetricStage(ctx, chathooks.MetricLlmFirstSentence, ts, nil)
 }
 
 func (s *ChatSession) TraceLlmEnd(ctx context.Context, ts int64, err error) {

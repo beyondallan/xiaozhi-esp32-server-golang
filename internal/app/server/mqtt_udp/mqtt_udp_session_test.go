@@ -2,6 +2,7 @@ package mqtt_udp
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -147,6 +148,38 @@ func TestCreateSessionRetriesConnIDCollision(t *testing.T) {
 	assert.NotEqual(t, first.ConnId, second.ConnId)
 	assert.Same(t, first, udpServer.GetSessionByConnID(first.ConnId))
 	assert.Same(t, second, udpServer.GetSessionByConnID(second.ConnId))
+}
+
+func TestMqttUdpConnSendAudioQueuesUDPDataAndIgnoresClosedSession(t *testing.T) {
+	session := newTestUdpSession()
+	conn := NewMqttUdpConn("device-a", "topic/device-a", nil, nil, session)
+	defer conn.Destroy()
+
+	payload := []byte("tts-frame")
+	require.NoError(t, conn.SendAudio(payload))
+
+	select {
+	case got := <-session.SendChannel:
+		assert.Equal(t, payload, got)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for queued udp audio")
+	}
+
+	session.Destroy()
+	require.NoError(t, conn.SendAudio([]byte("after-close")))
+}
+
+func TestMqttUdpConnRecvAudioReturnsQueuedUDPData(t *testing.T) {
+	session := newTestUdpSession()
+	conn := NewMqttUdpConn("device-a", "topic/device-a", nil, nil, session)
+	defer conn.Destroy()
+
+	expected := []byte("asr-frame")
+	session.RecvChannel <- expected
+
+	got, err := conn.RecvAudio(context.Background(), 1)
+	require.NoError(t, err)
+	assert.Equal(t, expected, got)
 }
 
 func buildCollisionRandomStream() []byte {

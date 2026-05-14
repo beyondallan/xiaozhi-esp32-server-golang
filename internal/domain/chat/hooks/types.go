@@ -106,6 +106,9 @@ func ValidateEventKind(event string, kind PluginKind) error {
 	if !ok {
 		return fmt.Errorf("unknown hook event: %s", event)
 	}
+	if event == EventChatMetric && kind == PluginKindInterceptor {
+		return nil
+	}
 	if PluginKind(expected) != kind {
 		return fmt.Errorf("hook event %s requires %s registration, got %s", event, expected, kind)
 	}
@@ -146,16 +149,18 @@ type TTSOutputStopData struct {
 type MetricStage string
 
 const (
-	MetricTurnStart     MetricStage = "turn_start"
-	MetricTurnEnd       MetricStage = "turn_end"
-	MetricAsrFirstText  MetricStage = "asr_first_text"
-	MetricAsrFinalText  MetricStage = "asr_final_text"
-	MetricLlmStart      MetricStage = "llm_start"
-	MetricLlmFirstToken MetricStage = "llm_first_token"
-	MetricLlmEnd        MetricStage = "llm_end"
-	MetricTtsStart      MetricStage = "tts_start"
-	MetricTtsFirstFrame MetricStage = "tts_first_frame"
-	MetricTtsStop       MetricStage = "tts_stop"
+	MetricTurnStart        MetricStage = "turn_start"
+	MetricTurnEnd          MetricStage = "turn_end"
+	MetricVoiceSilence     MetricStage = "voice_silence"
+	MetricAsrFirstText     MetricStage = "asr_first_text"
+	MetricAsrFinalText     MetricStage = "asr_final_text"
+	MetricLlmStart         MetricStage = "llm_start"
+	MetricLlmFirstToken    MetricStage = "llm_first_token"
+	MetricLlmFirstSentence MetricStage = "llm_first_sentence"
+	MetricLlmEnd           MetricStage = "llm_end"
+	MetricTtsStart         MetricStage = "tts_start"
+	MetricTtsFirstFrame    MetricStage = "tts_first_frame"
+	MetricTtsStop          MetricStage = "tts_stop"
 )
 
 type MetricData struct {

@@ -12,7 +12,7 @@ require (
 	github.com/cloudwego/eino v0.3.40
 	github.com/cloudwego/eino-ext/components/model/ollama v0.0.0-20250530094010-bd1c4fc20bbe
 	github.com/cloudwego/eino-ext/components/model/openai v0.0.0-20250530094010-bd1c4fc20bbe
-	github.com/difyz9/edge-tts-go v0.0.2
+	github.com/difyz9/edge-tts-go v0.0.3
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/getkin/kin-openapi v0.118.0
 	github.com/gin-gonic/gin v1.10.1

@@ -234,10 +234,13 @@ func (a *ContextTTSAdapter) TextToSpeechStreamWithContext(ctx context.Context, t
 	}
 
 	// 否则使用标准版本，但创建一个包装器来处理上下文取消
-	streamChan, err := a.Provider.TextToSpeechStream(ctx, text, sampleRate, channels, frameDuration)
+	streamCtx, cancel := context.WithCancel(ctx)
+	streamChan, err := a.Provider.TextToSpeechStream(streamCtx, text, sampleRate, channels, frameDuration)
 	if err != nil {
+		cancel()
 		return nil, nil, err
 	}
+	cancelFunc = cancel
 
 	// 创建一个新的输出通道，用于转发和处理取消
 	outputChan = make(chan []byte, 10)
@@ -248,7 +251,7 @@ func (a *ContextTTSAdapter) TextToSpeechStreamWithContext(ctx context.Context, t
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-streamCtx.Done():
 				// 上下文已取消，调用原始取消函数并退出
 				cancelFunc()
 				return
@@ -259,7 +262,7 @@ func (a *ContextTTSAdapter) TextToSpeechStreamWithContext(ctx context.Context, t
 				}
 				// 转发数据
 				select {
-				case <-ctx.Done():
+				case <-streamCtx.Done():
 					// 上下文已取消
 					cancelFunc()
 					return

@@ -24,7 +24,7 @@
         </el-select>
         <span class="devices-count">共 {{ filteredDevices.length }} 台设备</span>
       </div>
-      <el-button class="add-device-button" type="primary" @click="showAddDeviceDialog = true">
+      <el-button class="add-device-button" type="primary" @click="openAddDeviceDialog">
         <el-icon><Plus /></el-icon>
         添加设备
       </el-button>
@@ -37,7 +37,7 @@
           <h3>暂无设备</h3>
           <p>{{ emptyDescription }}</p>
           <div class="empty-actions">
-            <el-button type="primary" size="large" @click="showAddDeviceDialog = true">
+            <el-button type="primary" size="large" @click="openAddDeviceDialog">
               <el-icon><Plus /></el-icon>
               添加第一个设备
             </el-button>
@@ -166,13 +166,29 @@
       </div>
     </div>
 
-    <DeviceBindingDialog
+    <el-dialog
       v-model="showAddDeviceDialog"
-      :agents="agents"
-      :fixed-agent-id="bindingAgentId"
       title="绑定设备"
-      @success="handleDeviceBound"
-    />
+      width="520px"
+      :close-on-click-modal="false"
+      @closed="resetAddDeviceForm"
+    >
+      <DeviceForm
+        ref="deviceFormRef"
+        v-model="deviceForm"
+        mode="bind"
+        :agents="agents"
+        :fixed-agent-id="bindingAgentId"
+      />
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showAddDeviceDialog = false">取消</el-button>
+          <el-button type="primary" :loading="addingDevice" @click="handleAddDevice">
+            {{ addingDevice ? '绑定中...' : '绑定设备' }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
 
     <MessageInjectDialog
       v-model="showVoicePushDialog"
@@ -318,8 +334,9 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus, Monitor, Setting, Delete, User, ChatDotRound, EditPen, Check, Close } from '@element-plus/icons-vue'
 import api from '../../utils/api'
-import DeviceBindingDialog from '../../components/user/DeviceBindingDialog.vue'
+import DeviceForm from '../../components/common/DeviceForm.vue'
 import MessageInjectDialog from '../../components/user/MessageInjectDialog.vue'
+import { createDefaultDeviceForm } from '../../composables/useAgentFormOptions'
 
 const router = useRouter()
 const route = useRoute()
@@ -331,6 +348,9 @@ const bindingAgentId = computed(() => filterAgentId.value || null)
 const agents = ref([])
 const devices = ref([])
 const showAddDeviceDialog = ref(false)
+const addingDevice = ref(false)
+const deviceFormRef = ref(null)
+const deviceForm = ref(createDefaultDeviceForm({ mode: 'bind' }))
 const showVoicePushDialog = ref(false)
 const voicePushDeviceId = ref('')
 const editingDeviceId = ref(null)
@@ -396,6 +416,48 @@ const loadDevices = async () => {
 
 const handleDeviceBound = async () => {
   await loadDevices()
+}
+
+const resetAddDeviceForm = () => {
+  deviceForm.value = createDefaultDeviceForm({ mode: 'bind', fixedAgentId: bindingAgentId.value || null })
+  deviceFormRef.value?.clearValidate?.()
+}
+
+const openAddDeviceDialog = () => {
+  if (!agents.value.length) {
+    ElMessage.warning('请先创建智能体，再绑定设备')
+    return
+  }
+  resetAddDeviceForm()
+  showAddDeviceDialog.value = true
+}
+
+const handleAddDevice = async () => {
+  if (!deviceFormRef.value) return
+  try {
+    await deviceFormRef.value.validate()
+  } catch {
+    return
+  }
+  const agentId = bindingAgentId.value || deviceForm.value.agent_id
+  if (!agentId) {
+    ElMessage.warning('请选择目标智能体')
+    return
+  }
+
+  addingDevice.value = true
+  try {
+    const response = await api.post(`/user/agents/${agentId}/devices`, deviceFormRef.value.buildPayload())
+    if (response.data?.success) {
+      ElMessage.success('设备绑定成功')
+      showAddDeviceDialog.value = false
+      await handleDeviceBound()
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.error || '设备绑定失败')
+  } finally {
+    addingDevice.value = false
+  }
 }
 
 const handleVoicePush = (device) => {

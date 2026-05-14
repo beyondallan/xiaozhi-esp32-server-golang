@@ -150,6 +150,8 @@ const providerTypeMap = {
   coze: 'coze'
 }
 
+const knownProviders = new Set(Object.keys(providerTypeMap))
+
 const editableBaseURLProviders = new Set(['openai', 'ollama', 'azure', 'dify', 'coze'])
 
 const catalog = {
@@ -365,7 +367,7 @@ export function resolveLLMProvider(provider, type) {
   if (normalizedProvider === 'openai' && ['ollama', 'dify', 'coze'].includes(normalizedType)) {
     return normalizedType
   }
-  if (normalizedProvider) {
+  if (knownProviders.has(normalizedProvider)) {
     return normalizedProvider
   }
   if (['ollama', 'dify', 'coze'].includes(normalizedType)) {

@@ -540,7 +540,17 @@ func (conn *MCPServerConnection) refreshTools(ctx context.Context) error {
 
 func ConvertMcpToolListToInvokableToolList(tools []mcp.Tool, serverName string, client *client.Client) map[string]tool.InvokableTool {
 	invokeTools := make(map[string]tool.InvokableTool)
+	usedNames := make(map[string]string, len(tools))
 	for _, tool := range tools {
+		originName := tool.Name
+		if strings.TrimSpace(originName) == "" {
+			log.Warnf("跳过空名称 MCP 工具, server=%s", serverName)
+			continue
+		}
+		llmName := uniqueLLMToolName(sanitizeLLMToolName(originName), originName, usedNames)
+		if llmName != originName {
+			log.Debugf("MCP工具名 %q 不符合OpenAI工具名规范，已转换为 %q, server=%s", originName, llmName, serverName)
+		}
 
 		marshaledInputSchema, err := sonic.Marshal(tool.InputSchema)
 		if err != nil {
@@ -556,14 +566,15 @@ func ConvertMcpToolListToInvokableToolList(tools []mcp.Tool, serverName string, 
 
 		mcpToolInstance := &McpTool{
 			info: &schema.ToolInfo{
-				Name:        tool.Name,
+				Name:        llmName,
 				Desc:        tool.Description,
 				ParamsOneOf: schema.NewParamsOneOfByOpenAPIV3(inputSchema),
 			},
+			originName: originName,
 			serverName: serverName,
 			client:     client,
 		}
-		invokeTools[tool.Name] = mcpToolInstance
+		invokeTools[llmName] = mcpToolInstance
 	}
 	return invokeTools
 }
@@ -645,8 +656,7 @@ func (g *GlobalMCPManager) GetToolByName(name string) (tool.InvokableTool, bool)
 	var matched tool.InvokableTool
 	matchCount := 0
 	for _, invokable := range g.tools {
-		mcpToolInstance, ok := invokable.(*McpTool)
-		if !ok || mcpToolInstance.info == nil || mcpToolInstance.info.Name != name {
+		if !mcpToolMatchesName(invokable, name) {
 			continue
 		}
 		matchCount++

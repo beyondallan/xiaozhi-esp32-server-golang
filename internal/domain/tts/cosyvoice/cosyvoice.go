@@ -1,6 +1,7 @@
 package cosyvoice
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -114,7 +115,7 @@ func (p *CosyVoiceTTSProvider) TextToSpeech(ctx context.Context, text string, sa
 	requestURL := fmt.Sprintf("%s?%s", p.APIURL, params.Encode())
 
 	// 创建HTTP请求
-	req, err := http.NewRequest("GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %v", err)
 	}
@@ -167,7 +168,7 @@ func (p *CosyVoiceTTSProvider) TextToSpeech(ctx context.Context, text string, sa
 		outputChan := make(chan []byte, 1000)
 
 		// 创建MP3解码器
-		mp3Decoder, err := util.CreateAudioDecoder(ctx, resp.Body, outputChan, frameDuration, p.AudioFormat)
+		mp3Decoder, err := util.CreateAudioDecoder(ctx, io.NopCloser(bytes.NewReader(body)), outputChan, frameDuration, p.AudioFormat)
 		if err != nil {
 			close(doneChan)
 			return nil, fmt.Errorf("创建MP3解码器失败: %v", err)
@@ -208,7 +209,7 @@ func (p *CosyVoiceTTSProvider) TextToSpeechStream(ctx context.Context, text stri
 	requestURL := fmt.Sprintf("%s?%s", p.APIURL, params.Encode())
 
 	// 创建HTTP请求
-	req, err := http.NewRequest("GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %v", err)
 	}
@@ -222,6 +223,13 @@ func (p *CosyVoiceTTSProvider) TextToSpeechStream(ctx context.Context, text stri
 	outputChan = make(chan []byte, 100)
 	// 启动goroutine处理流式响应
 	go func() {
+		decoderStarted := false
+		defer func() {
+			if !decoderStarted {
+				close(outputChan)
+			}
+		}()
+
 		// 发送请求
 		resp, err := client.Do(req)
 		if err != nil {
@@ -265,11 +273,11 @@ func (p *CosyVoiceTTSProvider) TextToSpeechStream(ctx context.Context, text stri
 			mp3Decoder, err := util.CreateAudioDecoder(ctx, resp.Body, outputChan, frameDuration, p.AudioFormat)
 			if err != nil {
 				log.Errorf("创建MP3解码器失败: %v", err)
-				close(outputChan)
 				return
 			}
 
 			// 启动解码过程
+			decoderStarted = true
 			if err := mp3Decoder.Run(startTs); err != nil {
 				log.Errorf("MP3解码失败: %v", err)
 				return

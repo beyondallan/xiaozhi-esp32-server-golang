@@ -393,6 +393,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/users/:id/knowledge-bases/:kb_id", adminController.UpdateUserKnowledgeBaseAdmin)
 				admin.DELETE("/users/:id/knowledge-bases/:kb_id", adminController.DeleteUserKnowledgeBaseAdmin)
 
+				admin.GET("/users/:id/voice-options", adminController.GetUserVoiceOptionsAdmin)
+				admin.GET("/users/:id/voice-clones", adminController.GetUserVoiceClonesAdmin)
 				admin.GET("/users/:id/voice-clone-quotas", adminController.GetUserVoiceCloneQuotas)
 				admin.PUT("/users/:id/voice-clone-quotas", adminController.UpdateUserVoiceCloneQuotas)
 

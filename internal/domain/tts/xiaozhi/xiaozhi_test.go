@@ -85,7 +85,64 @@ func initLog() error {
 	return nil
 }
 
+func TestNewXiaozhiProviderConfigAndVoiceInfo(t *testing.T) {
+	provider := NewXiaozhiProvider(map[string]interface{}{
+		"server_addr": "wss://example.test/xiaozhi",
+		"device_id":   "device-1",
+		"client_id":   "client-1",
+		"token":       "token-1",
+	})
+
+	if provider.ServerAddr != "wss://example.test/xiaozhi" {
+		t.Fatalf("ServerAddr = %q", provider.ServerAddr)
+	}
+	if provider.DeviceID != "device-1" {
+		t.Fatalf("DeviceID = %q", provider.DeviceID)
+	}
+	if provider.Header.Get("Device-Id") != "device-1" {
+		t.Fatalf("Device-Id header = %q", provider.Header.Get("Device-Id"))
+	}
+	if provider.Header.Get("Client-Id") != "client-1" {
+		t.Fatalf("Client-Id header = %q", provider.Header.Get("Client-Id"))
+	}
+	if provider.Header.Get("Authorization") != "Bearer token-1" {
+		t.Fatalf("Authorization header = %q", provider.Header.Get("Authorization"))
+	}
+
+	info := provider.GetVoiceInfo()
+	if info["type"] != "xiaozhi_ws" {
+		t.Fatalf("voice info type = %#v", info["type"])
+	}
+	if info["server_addr"] != "wss://example.test/xiaozhi" {
+		t.Fatalf("voice info server_addr = %#v", info["server_addr"])
+	}
+	if info["device_id"] != "device-1" {
+		t.Fatalf("voice info device_id = %#v", info["device_id"])
+	}
+	if _, ok := info["audio_format"].(map[string]interface{}); !ok {
+		t.Fatalf("voice info audio_format missing: %#v", info["audio_format"])
+	}
+}
+
+func TestXiaozhiProviderUnsupportedSetVoiceAndLifecycle(t *testing.T) {
+	provider := NewXiaozhiProvider(map[string]interface{}{})
+
+	if !provider.IsValid() {
+		t.Fatal("provider should be valid")
+	}
+	if err := provider.Close(); err != nil {
+		t.Fatalf("Close error = %v", err)
+	}
+	if err := provider.SetVoice(map[string]interface{}{"voice": "demo"}); err == nil {
+		t.Fatal("expected SetVoice to be unsupported")
+	}
+}
+
 func TestTextToSpeechStream(t *testing.T) {
+	if os.Getenv("RUN_XIAOZHI_TEST") != "1" {
+		t.Skip("跳过小智在线 TTS 测试，设置 RUN_XIAOZHI_TEST=1 以启用")
+	}
+
 	//初始化log日志输出至标准输出
 	//initLog()
 	provider := NewXiaozhiProvider(map[string]interface{}{
@@ -109,7 +166,7 @@ func TestTextToSpeechStream(t *testing.T) {
 	workqueue.ParallelizeUntil(context.Background(), 3, len(textList), func(piece int) {
 		text := textList[piece]
 		fmt.Println("开始 speech text: ", text)
-		ch, err := provider.TextToSpeechStream(context.Background(), text)
+		ch, err := provider.TextToSpeechStream(context.Background(), text, 16000, 1, 20)
 		if err != nil {
 			fmt.Println("TextToSpeechStream 连接失败: ", err)
 			return

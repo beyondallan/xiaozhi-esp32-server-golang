@@ -161,6 +161,7 @@ import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Box } from '@element-plus/icons-vue'
 import api from '../../utils/api'
+import { resolveMemoryProvider } from './forms/configProviderUtils'
 
 const configs = ref([])
 const loading = ref(false)
@@ -278,11 +279,11 @@ const loadConfigs = async () => {
     // The backend returns { data: configs }, so we need to access response.data.data
     if (response && response.data && response.data.data && Array.isArray(response.data.data)) {
       // 使用Object.freeze防止意外修改，然后创建新数组
-      const newConfigs = [...response.data.data]
+      const newConfigs = response.data.data.map(normalizeMemoryConfigRow)
       configs.value = newConfigs
     } else if (response && response.data && response.data.data) {
       // If response.data.data exists but is not an array, wrap it in an array
-      configs.value = [response.data.data]
+      configs.value = [normalizeMemoryConfigRow(response.data.data)]
     } else {
       // If no valid data, set to empty array
       configs.value = []
@@ -295,6 +296,23 @@ const loadConfigs = async () => {
     configs.value = []
   } finally {
     loading.value = false
+  }
+}
+
+function parseJsonData(jsonData) {
+  if (!jsonData || typeof jsonData !== 'string') return {}
+  try {
+    return JSON.parse(jsonData) || {}
+  } catch {
+    return {}
+  }
+}
+
+function normalizeMemoryConfigRow(row) {
+  const data = parseJsonData(row?.json_data)
+  return {
+    ...row,
+    provider: resolveMemoryProvider(row?.provider, row?.config_id, data)
   }
 }
 
@@ -336,6 +354,7 @@ const handleSave = async () => {
 }
 
 const editConfig = (config) => {
+  config = normalizeMemoryConfigRow(config)
   editingConfig.value = config
   form.name = config.name
   form.config_id = config.config_id

@@ -150,56 +150,11 @@
       class="agent-dialog"
       :before-close="handleCloseAddAgent"
     >
-      <el-form
+      <AgentForm
         ref="agentFormRef"
-        :model="agentForm"
-        :rules="agentRules"
-        size="large"
-        label-position="top"
-      >
-        <el-form-item label="智能体名称" prop="name">
-          <el-input
-            v-model="agentForm.name"
-            placeholder="请输入智能体名称"
-            :maxlength="50"
-            show-word-limit
-          />
-        </el-form-item>
-        <el-form-item label="智能体昵称" prop="nickname">
-          <el-input
-            v-model="agentForm.nickname"
-            placeholder="给大模型使用，例如：小辉"
-            :maxlength="50"
-            show-word-limit
-          />
-          <div class="form-tip">用于替换 Prompt 中的 {{assistant_name}}，不是列表里的管理名称。</div>
-        </el-form-item>
-        <el-form-item label="角色介绍" prop="custom_prompt">
-          <el-input
-            v-model="agentForm.custom_prompt"
-            type="textarea"
-            :rows="5"
-            placeholder="请输入角色介绍 / 系统提示词"
-            :maxlength="10000"
-            show-word-limit
-          />
-        </el-form-item>
-        <div class="dialog-grid">
-          <el-form-item label="记忆模式" prop="memory_mode">
-            <el-select v-model="agentForm.memory_mode" placeholder="请选择记忆模式" style="width: 100%">
-              <el-option label="无记忆" value="none" />
-              <el-option label="短记忆" value="short" />
-              <el-option label="长记忆" value="long" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="只允许声纹聊天" prop="speaker_chat_mode">
-            <el-select v-model="agentForm.speaker_chat_mode" placeholder="请选择声纹聊天限制" style="width: 100%">
-              <el-option label="关闭" value="off" />
-              <el-option label="仅命中声纹时允许聊天" value="identified_only" />
-            </el-select>
-          </el-form-item>
-        </div>
-      </el-form>
+        v-model="agentForm"
+        mode="create"
+      />
 
       <template #footer>
         <div class="dialog-footer">
@@ -211,11 +166,28 @@
       </template>
     </el-dialog>
 
-    <DeviceBindingDialog
+    <el-dialog
       v-model="showAddDeviceDialog"
-      :agents="agents"
-      @success="handleDeviceBound"
-    />
+      title="添加设备"
+      width="520px"
+      :close-on-click-modal="false"
+      @closed="resetAddDeviceForm"
+    >
+      <DeviceForm
+        ref="deviceFormRef"
+        v-model="deviceForm"
+        mode="bind"
+        :agents="agents"
+      />
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showAddDeviceDialog = false">取消</el-button>
+          <el-button type="primary" :loading="addingDevice" @click="handleAddDevice">
+            {{ addingDevice ? '绑定中...' : '绑定设备' }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
 
     <MessageInjectDialog
       v-model="showInjectMessageDialog"
@@ -229,18 +201,18 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Setting, ChatDotRound, Monitor, Delete } from '@element-plus/icons-vue'
+import { Plus, Setting, ChatDotRound, Monitor, Delete, Connection } from '@element-plus/icons-vue'
 import api from '../../utils/api'
-import DeviceBindingDialog from '../../components/user/DeviceBindingDialog.vue'
+import AgentForm from '../../components/common/AgentForm.vue'
+import DeviceForm from '../../components/common/DeviceForm.vue'
 import MessageInjectDialog from '../../components/user/MessageInjectDialog.vue'
+import { createDefaultAgentForm, createDefaultDeviceForm } from '../../composables/useAgentFormOptions'
 import mcpStatusIcon from '../../assets/agent-status-icons/mcp.png'
 import openClawStatusIcon from '../../assets/agent-status-icons/openclaw.png'
 import memoryStatusIcon from '../../assets/agent-status-icons/memory.png'
 import knowledgeBaseStatusIcon from '../../assets/agent-status-icons/knowledge-base.png'
 
 const router = useRouter()
-
-const DEFAULT_PROMPT = '我是一个叫{{assistant_name}}的台湾女孩，说话机车，声音好听，习惯简短表达，爱用网络梗。\n我的男朋友是一个程序员，梦想是开发出一个机器人，能够帮助人们解决生活中的各种问题。\n我是一个喜欢哈哈大笑的女孩，爱东说西说吹牛，不合逻辑的也照吹，就要逗别人开心。'
 
 const agents = ref([])
 const allDevices = ref([])
@@ -251,33 +223,13 @@ const showAddDeviceDialog = ref(false)
 const showInjectMessageDialog = ref(false)
 
 const adding = ref(false)
+const addingDevice = ref(false)
 const agentFormRef = ref()
+const deviceFormRef = ref()
 const initialLoading = ref(true)
 
-const agentForm = reactive({
-  name: '',
-  nickname: '',
-  custom_prompt: DEFAULT_PROMPT,
-  memory_mode: 'short',
-  speaker_chat_mode: 'off'
-})
-
-const agentRules = {
-  name: [
-    { required: true, message: '请输入智能体名称', trigger: 'blur' },
-    { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' }
-  ],
-  nickname: [
-    { required: true, message: '请输入智能体昵称', trigger: 'blur' },
-    { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
-  ],
-  memory_mode: [
-    { required: true, message: '请选择记忆模式', trigger: 'change' }
-  ],
-  speaker_chat_mode: [
-    { required: true, message: '请选择声纹聊天限制', trigger: 'change' }
-  ]
-}
+const agentForm = ref(createDefaultAgentForm())
+const deviceForm = ref(createDefaultDeviceForm({ mode: 'bind' }))
 
 const onlineDevicesCount = computed(() => allDevices.value.filter(device => isDeviceOnline(device.last_active_at)).length)
 const agentsCountText = computed(() => initialLoading.value ? '--' : agents.value.length)
@@ -348,32 +300,7 @@ const handleAddAgent = async () => {
 
   adding.value = true
   try {
-    const [llmResponse, ttsResponse] = await Promise.all([
-      api.get('/user/llm-configs'),
-      api.get('/user/tts-configs')
-    ])
-
-    const llmConfigs = llmResponse.data.data || []
-    const ttsConfigs = ttsResponse.data.data || []
-    const defaultLlmConfig = llmConfigs.find(config => config.is_default)
-    const defaultTtsConfig = ttsConfigs.find(config => config.is_default)
-
-    const agentData = {
-      name: agentForm.name.trim(),
-      nickname: agentForm.nickname.trim(),
-      custom_prompt: agentForm.custom_prompt,
-      memory_mode: agentForm.memory_mode,
-      speaker_chat_mode: agentForm.speaker_chat_mode
-    }
-
-    if (defaultLlmConfig) {
-      agentData.llm_config_id = defaultLlmConfig.config_id
-    }
-    if (defaultTtsConfig) {
-      agentData.tts_config_id = defaultTtsConfig.config_id
-    }
-
-    const response = await api.post('/user/agents', agentData)
+    const response = await api.post('/user/agents', agentFormRef.value.buildPayload())
     if (response.data.success) {
       ElMessage.success('智能体添加成功')
       handleCloseAddAgent()
@@ -386,12 +313,47 @@ const handleAddAgent = async () => {
   }
 }
 
+const resetAddDeviceForm = () => {
+  deviceForm.value = createDefaultDeviceForm({ mode: 'bind' })
+  deviceFormRef.value?.clearValidate?.()
+}
+
 const openAddDeviceDialog = () => {
   if (!agents.value.length) {
     ElMessage.warning('请先创建智能体，再绑定设备')
     return
   }
+  resetAddDeviceForm()
   showAddDeviceDialog.value = true
+}
+
+const handleAddDevice = async () => {
+  if (!deviceFormRef.value) return
+  try {
+    await deviceFormRef.value.validate()
+  } catch {
+    return
+  }
+
+  const agentId = deviceForm.value.agent_id
+  if (!agentId) {
+    ElMessage.warning('请选择目标智能体')
+    return
+  }
+
+  addingDevice.value = true
+  try {
+    const response = await api.post(`/user/agents/${agentId}/devices`, deviceFormRef.value.buildPayload())
+    if (response.data?.success) {
+      ElMessage.success('设备绑定成功')
+      showAddDeviceDialog.value = false
+      await handleDeviceBound()
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.error || '设备绑定失败')
+  } finally {
+    addingDevice.value = false
+  }
 }
 
 const openInjectMessageDialog = () => {
@@ -413,13 +375,7 @@ const handleInjectSuccess = async () => {
 const handleCloseAddAgent = () => {
   showAddAgentDialog.value = false
   agentFormRef.value?.resetFields?.()
-  Object.assign(agentForm, {
-    name: '',
-    nickname: '',
-    custom_prompt: DEFAULT_PROMPT,
-    memory_mode: 'short',
-    speaker_chat_mode: 'off'
-  })
+  agentForm.value = createDefaultAgentForm()
 }
 
 const editAgent = (id) => {

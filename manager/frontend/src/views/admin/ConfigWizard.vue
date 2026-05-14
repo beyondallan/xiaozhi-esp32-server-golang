@@ -164,6 +164,8 @@ import VADConfigForm from './forms/VADConfigForm.vue'
 import ASRConfigForm from './forms/ASRConfigForm.vue'
 import LLMConfigForm from './forms/LLMConfigForm.vue'
 import TTSConfigForm from './forms/TTSConfigForm.vue'
+import { resolveASRProvider, resolveTTSProvider, resolveVADProvider } from './forms/configProviderUtils'
+import { getProviderFixedType, resolveLLMProvider } from './forms/llmCatalog'
 
 const currentStep = ref(0)
 const saving = ref(false)
@@ -359,16 +361,11 @@ const llmForm = reactive({
 })
 const llmFormRef = ref()
 function getResolvedLLMType(provider, type) {
-  if (type) return type
-  if (provider === 'dify' || provider === 'coze') return provider
-  return 'openai'
+  return getProviderFixedType(getResolvedLLMProvider(provider, type))
 }
 
 function getResolvedLLMProvider(provider, type) {
-  if (provider) return provider
-  const resolvedType = getResolvedLLMType(provider, type)
-  if (resolvedType === 'dify' || resolvedType === 'coze') return resolvedType
-  return 'openai'
+  return resolveLLMProvider(provider, type)
 }
 
 const llmFormRules = {
@@ -898,11 +895,12 @@ async function loadVadIfExists() {
     vadConfigId.value = config.id
     vadForm.name = config.name
     vadForm.config_id = config.config_id
-    vadForm.provider = config.provider || 'ten_vad'
     const data = JSON.parse(config.json_data || '{}')
-    if (config.provider === 'webrtc_vad') {
+    const provider = resolveVADProvider(config.provider, config.config_id, data)
+    vadForm.provider = provider
+    if (provider === 'webrtc_vad') {
       Object.assign(vadForm.webrtc_vad, data.webrtc_vad || data)
-    } else if (config.provider === 'silero_vad') {
+    } else if (provider === 'silero_vad') {
       Object.assign(vadForm.silero_vad, data.silero_vad || data)
     } else {
       Object.assign(vadForm.ten_vad, data.ten_vad || data)
@@ -919,15 +917,16 @@ async function loadAsrIfExists() {
     asrConfigId.value = config.id
     asrForm.name = config.name
     asrForm.config_id = config.config_id
-    asrForm.provider = config.provider || 'funasr'
     const data = JSON.parse(config.json_data || '{}')
-    if (config.provider === 'doubao') {
+    const provider = resolveASRProvider(config.provider, config.config_id, data)
+    asrForm.provider = provider
+    if (provider === 'doubao') {
       Object.assign(asrForm.doubao, data.doubao || data)
-    } else if (config.provider === 'aliyun_funasr') {
+    } else if (provider === 'aliyun_funasr') {
       Object.assign(asrForm.aliyun_funasr, data.aliyun_funasr || data)
-    } else if (config.provider === 'aliyun_qwen3') {
+    } else if (provider === 'aliyun_qwen3') {
       Object.assign(asrForm.aliyun_qwen3, data.aliyun_qwen3 || data)
-    } else if (config.provider === 'xunfei') {
+    } else if (provider === 'xunfei') {
       Object.assign(asrForm.xunfei, data.xunfei || data)
     } else {
       const obj = data.funasr || data
@@ -974,9 +973,9 @@ async function loadTtsIfExists() {
     ttsConfigId.value = config.id
     ttsForm.name = config.name
     ttsForm.config_id = config.config_id
-    ttsForm.provider = config.provider || 'minimax'
     const data = JSON.parse(config.json_data || '{}')
-    const p = config.provider
+    const p = resolveTTSProvider(config.provider, config.config_id, data)
+    ttsForm.provider = p
     if (p === 'doubao_ws') {
       Object.assign(ttsForm.doubao_ws, data)
       if (!String(ttsForm.doubao_ws.ws_url || '').trim()) {

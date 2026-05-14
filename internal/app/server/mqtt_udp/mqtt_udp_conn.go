@@ -236,15 +236,18 @@ func (c *MqttUdpConn) GetData(key string) (interface{}, error) {
 }
 
 func (c *MqttUdpConn) IsActive() bool {
-	now := time.Now().Unix()
+	now := time.Now()
 	if c.brokerOnline.Load() {
 		return true
 	}
 	retainedUntil := atomic.LoadInt64(&c.retainedUntilTs)
-	if retainedUntil > now {
+	if retainedUntil > 0 && now.Before(time.Unix(0, retainedUntil)) {
 		return true
 	}
-	return now-atomic.LoadInt64(&c.lastActiveTs) < MaxIdleDuration
+	if retainedUntil > 0 {
+		return false
+	}
+	return now.Unix()-atomic.LoadInt64(&c.lastActiveTs) < MaxIdleDuration
 }
 
 // 销毁
@@ -270,7 +273,7 @@ func (c *MqttUdpConn) MarkBrokerOnline() {
 
 func (c *MqttUdpConn) MarkBrokerOffline(gracePeriod time.Duration) {
 	c.brokerOnline.Store(false)
-	atomic.StoreInt64(&c.retainedUntilTs, time.Now().Add(gracePeriod).Unix())
+	atomic.StoreInt64(&c.retainedUntilTs, time.Now().Add(gracePeriod).UnixNano())
 }
 
 func (c *MqttUdpConn) IsBrokerOnline() bool {

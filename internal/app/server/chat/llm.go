@@ -389,7 +389,11 @@ func (l *LLMManager) handleLLMWithContextAndTools(
 					response.IsStart = isFirstOutput
 					if !firstSegment {
 						firstSegment = true
-						log.Infof("耗时统计: llm工具首句: %d ms", time.Now().UnixMilli()-startTs)
+						firstSentenceTs := time.Now().UnixMilli()
+						if l.clientState.MarkLlmFirstSentenceAt(firstSentenceTs) && l.session != nil {
+							l.session.TraceLlmFirstSentence(ctx, firstSentenceTs)
+						}
+						log.Infof("耗时统计: llm首句: %d ms", firstSentenceTs-startTs)
 					}
 					if isFirstOutput {
 						isFirstOutput = false

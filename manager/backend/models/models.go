@@ -66,7 +66,6 @@ type Agent struct {
 	// OpenClaw 配置，JSON字符串，结构：
 	// {"allowed":true,"enter_keywords":["进入openclaw"],"exit_keywords":["退出openclaw"]}
 	OpenClawConfig string    `json:"openclaw_config" gorm:"type:text"`
-	Status         string    `json:"status" gorm:"type:varchar(20);default:'active'"` // active, inactive
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
