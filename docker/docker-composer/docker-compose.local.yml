@@ -28,11 +28,8 @@ services:
     build:
       context: ../..
       dockerfile: docker/Dockerfile.main
-      platform: linux/amd64
-      args:
-        TARGETARCH: amd64
     container_name: xiaozhi-main-server
-    command: ["/workspace/bin/xiaozhi_server", "-c", "/workspace/config/config.personal.yaml"]
+    command: ["/workspace/bin/xiaozhi_server", "-c", "/workspace/config/config.yaml"]
     ports:
       - "8989:8989"        # websocket服务 端口 18989端口
       - "2883:2883"        # mqtt server 12883
