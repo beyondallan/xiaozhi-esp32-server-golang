@@ -154,3 +154,40 @@ func IsConnected() bool {
 	// 内存配置提供者始终是"连接"状态
 	return true
 }
+
+// === UserConfigProvider 接口方法补全 ===
+
+// IsDeviceActivated 检查设备是否已激活（内存提供者返回 false）
+func (m *MemoryUserConfigProvider) IsDeviceActivated(ctx context.Context, deviceId string, clientId string) (bool, error) {
+	return false, nil
+}
+
+// GetActivationInfo 获取激活信息（内存提供者返回空）
+func (m *MemoryUserConfigProvider) GetActivationInfo(ctx context.Context, deviceId string, clientId string) (string, string, string, int) {
+	return "", "", "", 0
+}
+
+// VerifyChallenge 验证设备激活挑战（内存提供者返回 false）
+func (m *MemoryUserConfigProvider) VerifyChallenge(ctx context.Context, deviceId string, clientId string, activationPayload types.ActivationPayload) (bool, error) {
+	return false, nil
+}
+
+// SwitchDeviceRoleByName 按角色名切换设备角色（内存提供者不支持）
+func (m *MemoryUserConfigProvider) SwitchDeviceRoleByName(ctx context.Context, deviceID string, roleName string) (string, error) {
+	return "", fmt.Errorf("内存配置提供者不支持切换设备角色")
+}
+
+// RestoreDeviceDefaultRole 恢复设备默认角色（内存提供者不支持）
+func (m *MemoryUserConfigProvider) RestoreDeviceDefaultRole(ctx context.Context, deviceID string) error {
+	return fmt.Errorf("内存配置提供者不支持恢复设备默认角色")
+}
+
+// NotifyDeviceEvent 通知上行设备事件（内存提供者无操作）
+func (m *MemoryUserConfigProvider) NotifyDeviceEvent(ctx context.Context, eventType string, eventData map[string]interface{}) {
+	log.Log().Debugf("内存配置提供者收到设备事件(无操作): eventType=%s", eventType)
+}
+
+// RegisterMessageEventHandler 注册下行事件处理函数（内存提供者无操作）
+func (m *MemoryUserConfigProvider) RegisterMessageEventHandler(ctx context.Context, eventType string, eventHandler types.EventHandler) {
+	log.Log().Debugf("内存配置提供者注册消息事件处理(无操作): eventType=%s", eventType)
+}

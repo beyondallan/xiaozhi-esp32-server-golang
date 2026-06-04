@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"xiaozhi-esp32-server-golang/internal/domain/config/manager"
+	"xiaozhi-esp32-server-golang/internal/domain/config/memory"
 	userconfig_redis "xiaozhi-esp32-server-golang/internal/domain/config/redis"
 	"xiaozhi-esp32-server-golang/internal/util"
 )
@@ -55,6 +56,13 @@ func GetUserConfigProvider(providerType string, config map[string]interface{}) (
 		provider, err := manager.NewManagerUserConfigProvider(config)
 		if err != nil {
 			return nil, fmt.Errorf("创建后端管理系统用户配置提供者失败: %v", err)
+		}
+		return provider, nil
+	case "memory":
+		// 创建内存用户配置提供者
+		provider, err := memory.NewMemoryUserConfigProvider(config)
+		if err != nil {
+			return nil, fmt.Errorf("创建内存用户配置提供者失败: %v", err)
 		}
 		return provider, nil
 	default:
