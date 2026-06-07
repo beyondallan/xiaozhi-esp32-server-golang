@@ -187,13 +187,14 @@ func main() {
 	text := flag.String("text", "你好测试", "文本")
 	runnerFlag := flag.String("runner", "manual", "运行方式(manual|auto)")
 	modeFlag := flag.String("mode", LocalModeAuto1, "本地模式(auto1|auto2|manual|realtime，auto会映射到auto1)")
-	casesFlag := flag.String("cases", "all", "自动化测试用例(all|manual_roundtrip,auto1_roundtrip,auto2_roundtrip,realtime_roundtrip,hello_metadata,injected_message_skip_llm,iot_roundtrip,tts_sentence_boundaries,manual_multi_turn,mcp_initialize,hello_without_mcp_no_initialize,mcp_duplicate_hello_no_reinitialize,invalid_hello_missing_audio_params,invalid_hello_unsupported_transport,duplicate_hello_rehandshake,listen_before_hello_ignored,abort_after_listen_start,abort_during_tts,realtime_interrupt,realtime_listen_stop,realtime_duplicate_start_ignored,goodbye_then_resume,ota_metadata,ota_activate_invalid_algorithm,ota_activate_invalid_challenge_if_required,mqtt_udp_hello,mqtt_udp_injected_message)")
+	casesFlag := flag.String("cases", "all", "自动化测试用例(all|manual_roundtrip,auto1_roundtrip,auto2_roundtrip,realtime_roundtrip,hello_metadata,injected_message_skip_llm,iot_roundtrip,tts_sentence_boundaries,manual_multi_turn,mcp_initialize,hello_without_mcp_no_initialize,mcp_duplicate_hello_no_reinitialize,agent_ws_endpoint_mcp,agent_ws_endpoint_mcp_keepalive,invalid_hello_missing_audio_params,invalid_hello_unsupported_transport,duplicate_hello_rehandshake,listen_before_hello_ignored,abort_after_listen_start,abort_during_tts,realtime_interrupt,realtime_listen_stop,realtime_duplicate_start_ignored,goodbye_then_resume,ota_metadata,ota_activate_invalid_algorithm,ota_activate_invalid_challenge_if_required,mqtt_udp_hello,mqtt_udp_injected_message)")
 	caseTimeoutFlag := flag.Duration("case_timeout", 20*time.Second, "自动化单用例超时时间")
 	turnsFlag := flag.Int("turns", 1, "自动化测试每个用例发言轮次")
 	ttsProviderFlag := flag.String("tts_provider", "edge_offline", "TTS provider (edge_offline|edge|cosyvoice)")
 	sampleRate := flag.Int("sample_rate", 16000, "sampleRate")
 	frameDurationsMs := flag.Int("frame_ms", 20, "frame duration ms")
 	addMcpFlag := flag.Bool("mcp", false, "是否启用mcp")
+	endpointAuthTokenFlag := flag.String("endpoint_auth_token", defaultAgentEndpointAuthToken, "智能体 WebSocket MCP endpoint JWT 签名密钥")
 
 	flag.Parse()
 
@@ -214,6 +215,7 @@ func main() {
 	autoTurns = *turnsFlag
 	ttsProviderName = strings.TrimSpace(*ttsProviderFlag)
 	addMcp = *addMcpFlag
+	agentEndpointAuthToken = strings.TrimSpace(*endpointAuthTokenFlag)
 
 	if strings.TrimSpace(*modeFlag) != mode {
 		fmt.Printf("本地模式 %s 已映射为 %s\n", strings.TrimSpace(*modeFlag), mode)

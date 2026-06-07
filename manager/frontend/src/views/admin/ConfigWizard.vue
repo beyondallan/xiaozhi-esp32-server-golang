@@ -205,7 +205,6 @@ const vadForm = reactive({
     min_silence_duration_ms: 100,
     sample_rate: 16000,
     channels: 1,
-    pool_size: 10,
     acquire_timeout_ms: 3000
   },
   ten_vad: {
@@ -220,6 +219,12 @@ const vadFormRules = {
   name: [{ required: true, message: '请输入配置名称', trigger: 'blur' }],
   config_id: [{ required: true, message: '请输入配置ID', trigger: 'blur' }],
   provider: [{ required: true, message: '请选择提供商', trigger: 'change' }],
+  'silero_vad.model_path': [{ required: true, message: '请输入模型路径', trigger: 'blur' }],
+  'silero_vad.threshold': [{ required: true, message: '请输入阈值', trigger: 'blur' }],
+  'silero_vad.min_silence_duration_ms': [{ required: true, message: '请输入最小静音持续时间', trigger: 'blur' }],
+  'silero_vad.sample_rate': [{ required: true, message: '请选择采样率', trigger: 'change' }],
+  'silero_vad.channels': [{ required: true, message: '请选择声道数', trigger: 'change' }],
+  'silero_vad.acquire_timeout_ms': [{ required: true, message: '请输入获取超时时间', trigger: 'blur' }],
   'ten_vad.hop_size': [{ required: true, message: '请输入帧移大小', trigger: 'blur' }],
   'ten_vad.threshold': [{ required: true, message: '请输入VAD检测阈值', trigger: 'blur' }],
   'ten_vad.pool_size': [{ required: true, message: '请输入连接池大小', trigger: 'blur' }],
@@ -247,6 +252,7 @@ const asrForm = reactive({
     model: 'fun-asr-realtime',
     format: 'pcm',
     sample_rate: 16000,
+    language_hints: ['zh'],
     vocabulary_id: '',
     disfluency_removal_enabled: false,
     timeout: 30

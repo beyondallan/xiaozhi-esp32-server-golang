@@ -142,6 +142,17 @@ go mod tidy
 go build -o xiaozhi_server ./cmd/server
 ```
 
+Windows PowerShell 本地编译启用 Silero VAD 时，需要先让 CGO 找到 ONNX Runtime 头文件和 import library：
+
+```powershell
+$env:CGO_ENABLED = "1"
+$env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+$env:C_INCLUDE_PATH = "E:\onnxruntime-win-x64-1.21.0\include"
+$env:LIBRARY_PATH = "E:\onnxruntime-win-x64-1.21.0\lib"
+go mod tidy
+go build -o xiaozhi_server.exe ./cmd/server
+```
+
 ### 启动
 
 ```bash

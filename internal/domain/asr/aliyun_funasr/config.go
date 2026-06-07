@@ -2,6 +2,7 @@ package aliyun_funasr
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -17,15 +18,16 @@ const (
 
 // Config 阿里云 FunASR 配置
 type Config struct {
-	APIKey                    string
-	WsURL                     string
-	Model                     string
-	Format                    string
-	SampleRate                int
-	VocabularyID              string
-	DisfluencyRemovalEnabled  bool
+	APIKey                     string
+	WsURL                      string
+	Model                      string
+	Format                     string
+	SampleRate                 int
+	LanguageHints              []string
+	VocabularyID               string
+	DisfluencyRemovalEnabled   bool
 	SemanticPunctuationEnabled bool
-	Timeout                   time.Duration
+	Timeout                    time.Duration
 }
 
 // DefaultConfig 返回默认配置
@@ -80,6 +82,11 @@ func applyViperDefaults(conf *Config) {
 			conf.SampleRate = sr
 		}
 	}
+	if viper.IsSet(prefix + "language_hints") {
+		conf.LanguageHints = parseLanguageHints(viper.Get(prefix + "language_hints"))
+	} else if viper.IsSet(prefix + "language") {
+		conf.LanguageHints = parseLanguageHints(viper.GetString(prefix + "language"))
+	}
 	if viper.IsSet(prefix + "vocabulary_id") {
 		conf.VocabularyID = viper.GetString(prefix + "vocabulary_id")
 	}
@@ -114,6 +121,11 @@ func applyMapOverrides(conf *Config, cfg map[string]interface{}) {
 	} else if v, ok := cfg["sample_rate"].(float64); ok && v > 0 {
 		conf.SampleRate = int(v)
 	}
+	if v, ok := cfg["language_hints"]; ok {
+		conf.LanguageHints = parseLanguageHints(v)
+	} else if v, ok := cfg["language"]; ok {
+		conf.LanguageHints = parseLanguageHints(v)
+	}
 	if v, ok := cfg["vocabulary_id"].(string); ok && v != "" {
 		conf.VocabularyID = v
 	}
@@ -128,4 +140,39 @@ func applyMapOverrides(conf *Config, cfg map[string]interface{}) {
 	} else if v, ok := cfg["timeout"].(float64); ok && v > 0 {
 		conf.Timeout = time.Duration(int(v)) * time.Second
 	}
+}
+
+func parseLanguageHints(value interface{}) []string {
+	switch v := value.(type) {
+	case []string:
+		return cleanLanguageHints(v)
+	case []interface{}:
+		hints := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				hints = append(hints, s)
+			}
+		}
+		return cleanLanguageHints(hints)
+	case string:
+		return splitLanguageHints(v)
+	default:
+		return nil
+	}
+}
+
+func splitLanguageHints(value string) []string {
+	normalized := strings.NewReplacer("，", ",", ";", ",", "；", ",").Replace(value)
+	return cleanLanguageHints(strings.Split(normalized, ","))
+}
+
+func cleanLanguageHints(values []string) []string {
+	hints := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			hints = append(hints, value)
+		}
+	}
+	return hints
 }

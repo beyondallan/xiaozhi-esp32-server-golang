@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/streamer45/silero-vad-go/speech"
+	"github.com/hackers365/silero-vad-go/speech"
 	"gopkg.in/hraban/opus.v2"
 )
 

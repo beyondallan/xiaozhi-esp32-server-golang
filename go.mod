@@ -24,6 +24,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/hackers365/go-webrtcvad v0.0.0-20250711024710-dde35479e077
 	github.com/hackers365/mem0-go v1.0.2
+	github.com/hackers365/silero-vad-go v0.2.2-0.20260521042711-c8860c450795
 	github.com/hraban/opus v0.0.0-20220302220929-eeacdbcb92d0
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	github.com/mark3labs/mcp-go v0.36.0
@@ -35,7 +36,6 @@ require (
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.20.1
-	github.com/streamer45/silero-vad-go v0.2.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tmaxmax/go-sse v0.11.0
 	go.uber.org/zap v1.27.0

@@ -19,30 +19,32 @@ const defaultHelloTimeout = 10 * time.Second
 const defaultNegativeReadTimeout = 2 * time.Second
 
 const (
-	protocolCaseNormal                 = "normal"
-	protocolCaseMCP                    = "mcp"
-	protocolCaseInvalidHello           = "invalid_hello"
-	protocolCaseAbort                  = "abort"
-	protocolCaseHelloMetadata          = "hello_metadata"
-	protocolCaseInjectedMessage        = "injected_message"
-	protocolCaseIot                    = "iot"
-	protocolCaseTTSSentenceBoundaries  = "tts_sentence_boundaries"
-	protocolCaseRealtimeInterrupt      = "realtime_interrupt"
-	protocolCaseDuplicateHello         = "duplicate_hello"
-	protocolCaseListenBeforeHello      = "listen_before_hello"
-	protocolCaseAbortDuringTTS         = "abort_during_tts"
-	protocolCaseRealtimeListenStop     = "realtime_listen_stop"
-	protocolCaseNoMCP                  = "no_mcp"
-	protocolCaseMCPDuplicateHello      = "mcp_duplicate_hello"
-	protocolCaseRealtimeDuplicateStart = "realtime_duplicate_start"
-	protocolCaseGoodbyeThenResume      = "goodbye_then_resume"
-	protocolCaseOTAMetadata            = "ota_metadata"
-	protocolCaseOTAInvalidAlgorithm    = "ota_invalid_algorithm"
-	protocolCaseOTAInvalidChallenge    = "ota_invalid_challenge"
-	protocolCaseMqttUDPHello           = "mqtt_udp_hello"
-	protocolCaseMqttUDPInjectedMessage = "mqtt_udp_injected_message"
-	protocolCaseInjectedMessageAuto    = "injected_message_auto"
-	protocolCaseInjectedMessageCold    = "injected_message_cold"
+	protocolCaseNormal                   = "normal"
+	protocolCaseMCP                      = "mcp"
+	protocolCaseInvalidHello             = "invalid_hello"
+	protocolCaseAbort                    = "abort"
+	protocolCaseHelloMetadata            = "hello_metadata"
+	protocolCaseInjectedMessage          = "injected_message"
+	protocolCaseIot                      = "iot"
+	protocolCaseTTSSentenceBoundaries    = "tts_sentence_boundaries"
+	protocolCaseRealtimeInterrupt        = "realtime_interrupt"
+	protocolCaseDuplicateHello           = "duplicate_hello"
+	protocolCaseListenBeforeHello        = "listen_before_hello"
+	protocolCaseAbortDuringTTS           = "abort_during_tts"
+	protocolCaseRealtimeListenStop       = "realtime_listen_stop"
+	protocolCaseNoMCP                    = "no_mcp"
+	protocolCaseMCPDuplicateHello        = "mcp_duplicate_hello"
+	protocolCaseRealtimeDuplicateStart   = "realtime_duplicate_start"
+	protocolCaseGoodbyeThenResume        = "goodbye_then_resume"
+	protocolCaseOTAMetadata              = "ota_metadata"
+	protocolCaseOTAInvalidAlgorithm      = "ota_invalid_algorithm"
+	protocolCaseOTAInvalidChallenge      = "ota_invalid_challenge"
+	protocolCaseMqttUDPHello             = "mqtt_udp_hello"
+	protocolCaseMqttUDPInjectedMessage   = "mqtt_udp_injected_message"
+	protocolCaseInjectedMessageAuto      = "injected_message_auto"
+	protocolCaseInjectedMessageCold      = "injected_message_cold"
+	protocolCaseAgentWsEndpointMCP       = "agent_ws_endpoint_mcp"
+	protocolCaseAgentWsEndpointKeepalive = "agent_ws_endpoint_mcp_keepalive"
 )
 
 var (
@@ -126,6 +128,7 @@ type protocolTestCase struct {
 	ExpectIotSuccess           bool
 	ExpectSentenceEnd          bool
 	ExpectNoServerGoodbye      bool
+	ExplicitOnly               bool
 }
 
 type protocolTestResult struct {
@@ -691,6 +694,21 @@ func buildProtocolTestCases() []protocolTestCase {
 			ExpectMCPResponse:        true,
 		},
 		{
+			Name:        "agent_ws_endpoint_mcp",
+			Description: "验证智能体 WebSocket MCP endpoint 反连、initialize/tools/list 与短时保活",
+			Kind:        protocolCaseAgentWsEndpointMCP,
+			LocalMode:   LocalModeManual,
+			Timeout:     autoCaseTimeout,
+		},
+		{
+			Name:         "agent_ws_endpoint_mcp_keepalive",
+			Description:  "验证智能体 WebSocket MCP endpoint 超过 2 分钟离线窗口与 10 分钟工具刷新边界后仍在线",
+			Kind:         protocolCaseAgentWsEndpointKeepalive,
+			LocalMode:    LocalModeManual,
+			Timeout:      13 * time.Minute,
+			ExplicitOnly: true,
+		},
+		{
 			Name:             "duplicate_hello_rehandshake",
 			Description:      "验证 websocket duplicate hello 后仍可继续正常 listen/stt/tts",
 			Kind:             protocolCaseDuplicateHello,
@@ -927,7 +945,13 @@ func sanitizeDeviceIDSuffix(input string) string {
 func selectProtocolTestCases() ([]protocolTestCase, error) {
 	allCases := buildProtocolTestCases()
 	if strings.EqualFold(strings.TrimSpace(autoCasesFilter), "all") || strings.TrimSpace(autoCasesFilter) == "" {
-		return allCases, nil
+		selected := make([]protocolTestCase, 0, len(allCases))
+		for _, testCase := range allCases {
+			if !testCase.ExplicitOnly {
+				selected = append(selected, testCase)
+			}
+		}
+		return selected, nil
 	}
 
 	lookup := make(map[string]protocolTestCase, len(allCases))
@@ -1049,6 +1073,8 @@ func runProtocolCase(serverAddr, deviceID, audioFile string, testCase *protocolT
 		return runMqttUDPHelloCase(serverAddr, deviceID, testCase)
 	case protocolCaseMqttUDPInjectedMessage:
 		return runMqttUDPInjectedMessageCase(serverAddr, deviceID, testCase)
+	case protocolCaseAgentWsEndpointMCP, protocolCaseAgentWsEndpointKeepalive:
+		return runAgentWsEndpointMCPCase(serverAddr, deviceID, testCase)
 	default:
 		return runClient(serverAddr, deviceID, audioFile, testCase)
 	}

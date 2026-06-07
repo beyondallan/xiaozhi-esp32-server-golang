@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -62,4 +63,43 @@ func GetAgentMcpToolsCommon(
 
 	log.Printf("成功获取MCP工具列表: count=%d", len(tools))
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"tools": tools}})
+}
+
+func newMcpEndpointData(endpoint string) gin.H {
+	return gin.H{
+		"endpoint":     endpoint,
+		"status":       "unknown",
+		"connected":    false,
+		"tools_count":  0,
+		"client_count": 0,
+	}
+}
+
+func applyMcpEndpointStatus(data gin.H, statusResult map[string]interface{}) {
+	if data == nil || statusResult == nil {
+		return
+	}
+
+	connected, _ := statusResult["connected"].(bool)
+	status, _ := statusResult["status"].(string)
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status == "" {
+		if connected {
+			status = "online"
+		} else {
+			status = "offline"
+		}
+	}
+
+	data["connected"] = connected
+	data["status"] = status
+	if clientCount, ok := statusResult["client_count"]; ok {
+		data["client_count"] = clientCount
+	}
+	if toolsCount, ok := statusResult["tools_count"]; ok {
+		data["tools_count"] = toolsCount
+	}
+	if statusMessage, ok := statusResult["status_message"].(string); ok && strings.TrimSpace(statusMessage) != "" {
+		data["status_message"] = statusMessage
+	}
 }

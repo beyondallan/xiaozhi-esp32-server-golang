@@ -14,6 +14,7 @@ import (
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,12 @@ func markTestClientConnected(client *McpClientInstance, lastPing time.Time) *Mcp
 	client.setConnected(true)
 	client.setLastPing(lastPing)
 	return client
+}
+
+func newTestMcpClientPool() *McpClientPool {
+	return &McpClientPool{
+		device2McpClient: cmap.New[*DeviceMcpSession](),
+	}
 }
 
 func TestGlobalMCPManager_Singleton(t *testing.T) {
@@ -1522,8 +1529,103 @@ func TestHeartbeatWsEndpointRuntimeRefreshesToolsAfterTenMinutesAndPings(t *test
 	assert.True(t, instance.LastPing().After(oldPing))
 	assert.True(t, instance.LastToolsRefresh().After(oldRefresh))
 	methods := transportInstance.drainRequestMethods()
-	assert.Contains(t, methods, string(mcp.MethodToolsList))
-	assert.Contains(t, methods, string(mcp.MethodPing))
+	assert.Equal(t, []string{string(mcp.MethodPing), string(mcp.MethodToolsList)}, methods)
+}
+
+func TestHeartbeatWsEndpointRuntimePingsBeforeToolsRefreshFailure(t *testing.T) {
+	transportInstance := &mockGlobalTransport{
+		listResponses: []mockGlobalTransportListResponse{
+			{err: fmt.Errorf("list tools failed")},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	instance := &McpClientInstance{
+		serverName: "ws_endpoint_mcp_test",
+		mcpClient:  client.NewClient(transportInstance),
+		Ctx:        ctx,
+		cancel:     cancel,
+	}
+	instance.storeToolsSnapshot(make(map[string]einotool.InvokableTool))
+	instance.setConnected(true)
+	require.NoError(t, instance.sendInitlize(context.Background()))
+
+	oldPing := time.Unix(100, 0)
+	oldRefresh := time.Now().Add(-11 * time.Minute)
+	instance.setLastPing(oldPing)
+	instance.setLastToolsRefresh(oldRefresh)
+
+	session := &DeviceMcpSession{}
+	transportInstance.drainRequestMethods()
+
+	session.heartbeatMcpInstance(instance)
+
+	assert.True(t, instance.LastPing().After(oldPing))
+	assert.EqualValues(t, 1, instance.RefreshFailureCount())
+	assert.True(t, instance.IsConnected())
+	assert.Equal(t, []string{string(mcp.MethodPing), string(mcp.MethodToolsList)}, transportInstance.drainRequestMethods())
+}
+
+func TestSweepOfflineClientsKeepsWsEndpointWithinOfflineTimeout(t *testing.T) {
+	pool := newTestMcpClientPool()
+	deviceID := fmt.Sprintf("ws-endpoint-offline-window-%d", time.Now().UnixNano())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	clientCtx, clientCancel := context.WithCancel(ctx)
+	defer clientCancel()
+
+	session := &DeviceMcpSession{
+		deviceID:              deviceID,
+		Ctx:                   ctx,
+		cancel:                cancel,
+		iotOverMcpByTransport: make(map[string]*McpClientInstance),
+	}
+	instance := markTestClientConnected(&McpClientInstance{
+		serverName: "ws_endpoint_mcp_test",
+		Ctx:        clientCtx,
+		cancel:     clientCancel,
+	}, time.Now().Add(-(deviceMCPPingInterval + 30*time.Second)))
+	instance.SetOnCloseHandler(session.handleMcpClientClose)
+	session.wsEndPointMcp.Store(instance.serverName, instance)
+	pool.AddMcpClient(deviceID, session)
+
+	pool.sweepOfflineClients()
+
+	assert.True(t, instance.IsConnected())
+	assert.NoError(t, clientCtx.Err())
+	assert.NotNil(t, pool.GetMcpClient(deviceID))
+}
+
+func TestSweepOfflineClientsClosesWsEndpointAfterOfflineTimeout(t *testing.T) {
+	pool := newTestMcpClientPool()
+	deviceID := fmt.Sprintf("ws-endpoint-offline-timeout-%d", time.Now().UnixNano())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	clientCtx, clientCancel := context.WithCancel(ctx)
+	defer clientCancel()
+
+	session := &DeviceMcpSession{
+		deviceID:              deviceID,
+		Ctx:                   ctx,
+		cancel:                cancel,
+		iotOverMcpByTransport: make(map[string]*McpClientInstance),
+	}
+	instance := markTestClientConnected(&McpClientInstance{
+		serverName: "ws_endpoint_mcp_test",
+		Ctx:        clientCtx,
+		cancel:     clientCancel,
+	}, time.Now().Add(-(mcpConnectionOfflineTimeout + time.Second)))
+	instance.SetOnCloseHandler(session.handleMcpClientClose)
+	session.wsEndPointMcp.Store(instance.serverName, instance)
+	pool.AddMcpClient(deviceID, session)
+
+	pool.sweepOfflineClients()
+
+	assert.False(t, instance.IsConnected())
+	assert.ErrorIs(t, clientCtx.Err(), context.Canceled)
+	assert.Nil(t, pool.GetMcpClient(deviceID))
 }
 
 func TestGetToolByNameWithTransport_PrefersCurrentTransport(t *testing.T) {

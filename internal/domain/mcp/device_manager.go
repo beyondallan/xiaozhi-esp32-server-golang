@@ -21,6 +21,7 @@ const (
 	deviceMCPPingInterval          = 2 * time.Minute
 	wsEndpointToolsRefreshInterval = 10 * time.Minute
 	heartbeatRefreshFailureLimit   = 5
+	mcpConnectionOfflineTimeout    = 3 * deviceMCPPingInterval
 )
 
 // DeviceMcpSession 代表一个设备的MCP会话，聚合了多种MCP连接
@@ -454,7 +455,9 @@ func (dc *McpClientInstance) closeWithReason(reason string) {
 
 	dc.setConnected(false)
 	dc.setInitState(mcpClientInitStateIdle)
-	dc.cancel()
+	if dc.cancel != nil {
+		dc.cancel()
+	}
 	if dc.mcpClient != nil && reason != "connection_closed" && reason != "manual_close" {
 		if err := dc.mcpClient.Close(); err != nil {
 			logger.Warnf("关闭MCP客户端 %s transport 失败: %v", dc.serverName, err)
@@ -534,18 +537,18 @@ func (dc *DeviceMcpSession) heartbeatMcpInstance(mcpInstance *McpClientInstance)
 		logger.Debugf("设备 %s 通过 tools/list 心跳维持 IoT MCP 存活", mcpInstance.serverName)
 		return
 	}
-	if lastRefresh := mcpInstance.LastToolsRefresh(); lastRefresh.IsZero() || time.Since(lastRefresh) >= wsEndpointToolsRefreshInterval {
-		if err := mcpInstance.refreshTools(); err != nil {
-			dc.handleHeartbeatRefreshFailure(mcpInstance, err)
-			return
-		}
-	}
 	err := mcpInstance.mcpClient.Ping(mcpInstance.Ctx)
 	if err == nil {
 		mcpInstance.setLastPing(time.Now())
 		logger.Debugf("设备 %s ping成功", mcpInstance.serverName)
 	} else {
 		logger.Warnf("设备 %s ping失败: %v", mcpInstance.serverName, err)
+	}
+	if lastRefresh := mcpInstance.LastToolsRefresh(); lastRefresh.IsZero() || time.Since(lastRefresh) >= wsEndpointToolsRefreshInterval {
+		if err := mcpInstance.refreshTools(); err != nil {
+			dc.handleHeartbeatRefreshFailure(mcpInstance, err)
+			return
+		}
 	}
 }
 

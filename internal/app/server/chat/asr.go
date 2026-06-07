@@ -151,6 +151,11 @@ func (a *ASRManager) ProcessVadAudio(ctx context.Context) {
 		needVad := !(state.Asr.AutoEnd || state.ListenMode == "manual")
 		vadProviderName := state.DeviceConfig.Vad.Provider
 		vadProviderConfig := state.DeviceConfig.Vad.Config
+		effectiveVadProviderName := vadProviderName
+		if configProvider, ok := vadProviderConfig["provider"].(string); ok && configProvider != "" {
+			effectiveVadProviderName = configProvider
+		}
+		isSileroVAD := effectiveVadProviderName == "silero_vad"
 		releaseVad := func(reason string) {
 			if vadWrapper == nil {
 				return
@@ -243,13 +248,6 @@ func (a *ASRManager) ProcessVadAudio(ctx context.Context) {
 
 					// 计算 VAD 需要的帧数
 					vadNeedGetCount = 1
-					if state.DeviceConfig.Vad.Provider == "silero_vad" {
-						// silero_vad 需要至少 60ms 的音频数据
-						vadNeedGetCount = 60 / frameDurationMs
-						if vadNeedGetCount < 1 {
-							vadNeedGetCount = 1
-						}
-					}
 					log.Debugf("从实际音频数据计算帧信息: frameSize=%d, frameDurationMs=%d, vadNeedGetCount=%d", frameSize, frameDurationMs, vadNeedGetCount)
 				}
 
@@ -275,23 +273,24 @@ func (a *ASRManager) ProcessVadAudio(ctx context.Context) {
 					//decode opus to pcm
 					state.AsrAudioBuffer.AddAsrAudioData(pcmData)
 
-					// 计算 VAD 需要的最小数据量（60ms for silero_vad）
+					// 计算 VAD 需要的最小数据量
 					vadNeedMinSize := frameSize
-					if state.DeviceConfig.Vad.Provider == "silero_vad" {
-						vadNeedMinSize = vadNeedGetCount * frameSize
-					}
 
 					if state.AsrAudioBuffer.GetAsrDataSize() >= vadNeedMinSize {
-						//如果要进行vad, 至少要取60ms的音频数据
-						vadPcmData = state.AsrAudioBuffer.GetAsrData(vadNeedGetCount, frameSize)
+						if isSileroVAD {
+							vadPcmData = pcmData
+						} else {
+							vadPcmData = state.AsrAudioBuffer.GetAsrData(vadNeedGetCount, frameSize)
+						}
 
 						//如果已经检测到语音, 则不进行vad检测, 直接将pcmData传给asr
 						// 使用循环外获取的VAD资源进行检测
-						// 重置VAD状态
-						vadLastUseAt = time.Now()
-						if err := vadProvider.Reset(); err != nil {
-							log.Errorf("重置vad失败: %v", err)
-							continue
+						if !isSileroVAD {
+							vadLastUseAt = time.Now()
+							if err := vadProvider.Reset(); err != nil {
+								log.Errorf("重置vad失败: %v", err)
+								continue
+							}
 						}
 
 						// 进行VAD检测

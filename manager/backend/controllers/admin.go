@@ -2963,8 +2963,22 @@ func (ac *AdminController) GetAgentMCPEndpoint(c *gin.Context) {
 		return
 	}
 
-	// 返回单个endpoint字符串
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"endpoint": endpoint}})
+	data := newMcpEndpointData(endpoint)
+	if ac.WebSocketController == nil {
+		data["status_message"] = "websocket controller unavailable"
+		c.JSON(http.StatusOK, gin.H{"data": data})
+		return
+	}
+
+	statusResult, statusErr := ac.WebSocketController.RequestMcpEndpointStatusFromClient(context.Background(), agentID)
+	if statusErr != nil {
+		data["status_message"] = statusErr.Error()
+		c.JSON(http.StatusOK, gin.H{"data": data})
+		return
+	}
+
+	applyMcpEndpointStatus(data, statusResult)
+	c.JSON(http.StatusOK, gin.H{"data": data})
 }
 
 // GetAgentOpenClawEndpoint 获取智能体的OpenClaw接入点URL

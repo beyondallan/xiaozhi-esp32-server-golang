@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/streamer45/silero-vad-go/speech"
+	"github.com/hackers365/silero-vad-go/speech"
 
 	"github.com/go-audio/wav"
 )

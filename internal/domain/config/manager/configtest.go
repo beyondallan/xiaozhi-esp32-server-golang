@@ -147,8 +147,9 @@ func RunConfigTest(data map[string]interface{}, testText string) (vadResult, asr
 				continue
 			}
 			vad := wrapper.GetProvider()
+			testSamples := vadTestSampleCount(configID, cfg)
 			t0 := time.Now()
-			_, err = vad.IsVAD(pcm[:min(320, len(pcm))])
+			_, err = vad.IsVAD(pcm[:min(testSamples, len(pcm))])
 			elapsedMs := time.Since(t0).Milliseconds()
 			pool.Release(wrapper)
 			if err != nil {
@@ -371,6 +372,71 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func vadTestSampleCount(configID string, cfg map[string]interface{}) int {
+	switch vadProviderForTest(configID, cfg) {
+	case "silero_vad":
+		if intFromMap(cfg, "sample_rate", 16000) == 8000 {
+			return 256
+		}
+		return 512
+	case "ten_vad":
+		return intFromMap(cfg, "hop_size", 512)
+	default:
+		return 320
+	}
+}
+
+func vadProviderForTest(configID string, cfg map[string]interface{}) string {
+	if provider, ok := cfg["provider"].(string); ok {
+		provider = strings.ToLower(strings.TrimSpace(provider))
+		if provider != "" {
+			return provider
+		}
+	}
+	if _, ok := cfg["silero_vad"]; ok {
+		return "silero_vad"
+	}
+	if _, ok := cfg["ten_vad"]; ok {
+		return "ten_vad"
+	}
+
+	configID = strings.ToLower(strings.TrimSpace(configID))
+	switch {
+	case strings.Contains(configID, "silero"):
+		return "silero_vad"
+	case strings.Contains(configID, "ten"):
+		return "ten_vad"
+	default:
+		return ""
+	}
+}
+
+func intFromMap(cfg map[string]interface{}, key string, fallback int) int {
+	switch value := cfg[key].(type) {
+	case int:
+		if value > 0 {
+			return value
+		}
+	case int64:
+		if value > 0 {
+			return int(value)
+		}
+	case int32:
+		if value > 0 {
+			return int(value)
+		}
+	case float64:
+		if value > 0 {
+			return int(value)
+		}
+	case float32:
+		if value > 0 {
+			return int(value)
+		}
+	}
+	return fallback
 }
 
 func llmThinkingEnabled(cfg map[string]interface{}) bool {

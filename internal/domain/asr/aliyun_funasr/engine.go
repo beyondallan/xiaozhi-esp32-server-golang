@@ -115,6 +115,7 @@ func (a *AliyunFunASR) StreamingRecognize(ctx context.Context, audioStream <-cha
 			Parameters: Params{
 				Format:                     a.config.Format,
 				SampleRate:                 a.config.SampleRate,
+				LanguageHints:              a.config.LanguageHints,
 				VocabularyID:               a.config.VocabularyID,
 				DisfluencyRemovalEnabled:   a.config.DisfluencyRemovalEnabled,
 				SemanticPunctuationEnabled: a.config.SemanticPunctuationEnabled,

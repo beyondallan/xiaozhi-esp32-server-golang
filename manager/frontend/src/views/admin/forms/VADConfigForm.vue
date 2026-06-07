@@ -3,6 +3,7 @@
     <el-form-item label="提供商" prop="provider">
       <el-select v-model="model.provider" placeholder="请选择提供商" style="width: 100%">
         <el-option label="TEN VAD" value="ten_vad" />
+        <el-option label="Silero VAD" value="silero_vad" />
       </el-select>
     </el-form-item>
     <el-form-item label="配置名称" prop="name">
@@ -54,8 +55,6 @@
         <el-select v-model="model.silero_vad.sample_rate" style="width: 100%">
           <el-option label="8000 Hz" :value="8000" />
           <el-option label="16000 Hz" :value="16000" />
-          <el-option label="32000 Hz" :value="32000" />
-          <el-option label="48000 Hz" :value="48000" />
         </el-select>
       </el-form-item>
       <el-form-item label="声道数" prop="silero_vad.channels">
@@ -64,8 +63,9 @@
           <el-option label="双声道" :value="2" />
         </el-select>
       </el-form-item>
-      <el-form-item label="连接池大小" prop="silero_vad.pool_size">
+      <el-form-item label="Session数" prop="silero_vad.pool_size">
         <el-input-number v-model="model.silero_vad.pool_size" :min="1" :max="100" style="width: 100%" />
+        <div style="font-size: 12px; color: #909399; margin-top: 4px;">默认：CPU 核心数</div>
       </el-form-item>
       <el-form-item label="获取超时时间(ms)" prop="silero_vad.acquire_timeout_ms">
         <el-input-number v-model="model.silero_vad.acquire_timeout_ms" :min="100" :max="30000" style="width: 100%" />

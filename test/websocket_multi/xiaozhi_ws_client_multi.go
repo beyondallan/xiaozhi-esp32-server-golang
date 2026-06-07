@@ -80,6 +80,7 @@ type WsClient struct {
 	Token             string
 	ServerAddr        string
 	Conn              *websocket.Conn
+	ListenMode        string
 	firstRecvFrame    bool
 	detectStartTs     int64
 	index             int
@@ -141,6 +142,7 @@ func main() {
 	clientCount := flag.Int("count", 10, "客户端数量")
 	chatText := flag.String("text", "你好", "聊天内容, 多句以逗号分隔会依次发送")
 	deviceId := flag.String("device", "", "设备ID")
+	listenMode := flag.String("listen_mode", "manual", "listen模式: manual/auto/realtime")
 	audioWav := flag.String("audio_wav", "", "预置wav文件路径(逗号分隔)，启用后不调用云端TTS生成测试音频")
 	rampMs := flag.Int("ramp_ms", 0, "启动客户端间隔毫秒，避免瞬时建连抖动")
 	metricsJSONL := flag.String("metrics_jsonl", "", "指标输出文件(JSONL)")
@@ -171,6 +173,7 @@ func main() {
 		go func() {
 			client := &WsClient{
 				ServerAddr:        *serverAddr,
+				ListenMode:        *listenMode,
 				index:             idx,
 				audioOpusDataChan: make(chan AudioOpusData, 2),
 				DeviceId:          *deviceId,
@@ -309,7 +312,7 @@ func (w *WsClient) sendHello() error {
 }
 
 func (w *WsClient) sendListenStart() error {
-	listenStartMsg := ClientMessage{Type: MessageTypeListen, DeviceID: w.DeviceId, State: MessageStateStart, Mode: "manual"}
+	listenStartMsg := ClientMessage{Type: MessageTypeListen, DeviceID: w.DeviceId, State: MessageStateStart, Mode: w.listenMode()}
 	if err := sendJSONMessage(w.Conn, listenStartMsg); err != nil {
 		return fmt.Errorf("发送listen start消息失败: %v", err)
 	}
@@ -317,13 +320,20 @@ func (w *WsClient) sendListenStart() error {
 }
 
 func (w *WsClient) sendListenStop() error {
-	listenStopMsg := ClientMessage{Type: MessageTypeListen, DeviceID: w.DeviceId, State: MessageStateStop, Mode: "manual"}
+	listenStopMsg := ClientMessage{Type: MessageTypeListen, DeviceID: w.DeviceId, State: MessageStateStop, Mode: w.listenMode()}
 	if err := sendJSONMessage(w.Conn, listenStopMsg); err != nil {
 		return fmt.Errorf("发送listen stop消息失败: %v", err)
 	}
 	w.detectStartTs = time.Now().UnixMilli()
 	w.firstRecvFrame = false
 	return nil
+}
+
+func (w *WsClient) listenMode() string {
+	if strings.TrimSpace(w.ListenMode) == "" {
+		return "manual"
+	}
+	return w.ListenMode
 }
 
 func sendJSONMessage(conn *websocket.Conn, msg interface{}) error {

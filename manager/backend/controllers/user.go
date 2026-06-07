@@ -655,12 +655,7 @@ func (uc *UserController) GetAgentMCPEndpoint(c *gin.Context) {
 		return
 	}
 
-	data := gin.H{
-		"endpoint":    endpoint,
-		"status":      "unknown",
-		"connected":   false,
-		"tools_count": 0,
-	}
+	data := newMcpEndpointData(endpoint)
 	if uc.WebSocketController == nil {
 		data["status_message"] = "websocket controller unavailable"
 		c.JSON(http.StatusOK, gin.H{"data": data})
@@ -674,22 +669,7 @@ func (uc *UserController) GetAgentMCPEndpoint(c *gin.Context) {
 		return
 	}
 
-	connected, _ := statusResult["connected"].(bool)
-	status, _ := statusResult["status"].(string)
-	status = strings.ToLower(strings.TrimSpace(status))
-	if status == "" {
-		if connected {
-			status = "online"
-		} else {
-			status = "offline"
-		}
-	}
-
-	data["connected"] = connected
-	data["status"] = status
-	if clientCount, ok := statusResult["client_count"]; ok {
-		data["client_count"] = clientCount
-	}
+	applyMcpEndpointStatus(data, statusResult)
 	c.JSON(http.StatusOK, gin.H{"data": data})
 }
 

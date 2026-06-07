@@ -129,6 +129,8 @@ github.com/hackers365/go-webrtcvad v0.0.0-20250711024710-dde35479e077 h1:laRsJc0
 github.com/hackers365/go-webrtcvad v0.0.0-20250711024710-dde35479e077/go.mod h1:XhoD6RIJ3Y5444iAUszXIBgwPul2djHS9CchHiM7vPU=
 github.com/hackers365/mem0-go v1.0.2 h1:rlFIW4KeSLi7MBSfWNKMfkxLuiOySpoKE7hRH5bbQwE=
 github.com/hackers365/mem0-go v1.0.2/go.mod h1:49fJR3kfMfqp2z6sCHMY7xnwTx0pYK1R2vLBtKVspSg=
+github.com/hackers365/silero-vad-go v0.2.2-0.20260521042711-c8860c450795 h1:qSvtpVDP/FP38Q4qKbx2J4PesjVTJm5qfYkknUPTHpQ=
+github.com/hackers365/silero-vad-go v0.2.2-0.20260521042711-c8860c450795/go.mod h1:hF/3z/Q8t9dz0N5RA9ZKRiCrWqgBfkgW98h1VcVRKTg=
 github.com/hajimehoshi/go-mp3 v0.3.4 h1:NUP7pBYH8OguP4diaTZ9wJbUbk3tC0KlfzsEpWmYj68=
 github.com/hajimehoshi/go-mp3 v0.3.4/go.mod h1:fRtZraRFcWb0pu7ok0LqyFhCUrPeMsGRSVop0eemFmo=
 github.com/hajimehoshi/oto/v2 v2.3.1/go.mod h1:seWLbgHH7AyUMYKfKYT9pg7PhUu9/SisyJvNTT+ASQo=
@@ -270,8 +272,6 @@ github.com/spf13/pflag v1.0.6 h1:jFzHGLGAlb3ruxLB8MhbI6A8+AQX/2eW4qeyNZXNp2o=
 github.com/spf13/pflag v1.0.6/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/viper v1.20.1 h1:ZMi+z/lvLyPSCoNtFCpqjy0S4kPbirhpTMwl8BkW9X4=
 github.com/spf13/viper v1.20.1/go.mod h1:P9Mdzt1zoHIG8m2eZQinpiBjo6kCmZSKBClNNqjJvu4=
-github.com/streamer45/silero-vad-go v0.2.1 h1:Li1/tTC4H/3cyw6q4weX+U8GWwEL3lTekK/nYa1Cvuk=
-github.com/streamer45/silero-vad-go v0.2.1/go.mod h1:B+2FXs/5fZ6pzl6unUZYhZqkYdOB+3saBVzjOzdZnUs=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=

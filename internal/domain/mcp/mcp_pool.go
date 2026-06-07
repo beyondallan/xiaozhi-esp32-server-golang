@@ -136,13 +136,14 @@ func (p *McpClientPool) checkOffline() {
 }
 
 func (p *McpClientPool) sweepOfflineClients() {
+	now := time.Now()
 	for _, client := range p.device2McpClient.Items() {
 		// 检查WebSocket端点MCP连接
 		hasActiveWsConnections := false
 		staleWsConnections := make([]*McpClientInstance, 0)
 		client.wsEndPointMcp.Range(func(_, value interface{}) bool {
 			wsInstance := value.(*McpClientInstance)
-			if time.Since(wsInstance.LastPing()) > 2*time.Minute {
+			if now.Sub(wsInstance.LastPing()) > mcpConnectionOfflineTimeout {
 				staleWsConnections = append(staleWsConnections, wsInstance)
 			} else {
 				hasActiveWsConnections = true
@@ -150,8 +151,7 @@ func (p *McpClientPool) sweepOfflineClients() {
 			return true //continue
 		})
 		for _, wsInstance := range staleWsConnections {
-			wsInstance.setConnected(false)
-			wsInstance.cancel()
+			wsInstance.closeWithReason("offline_timeout")
 		}
 
 		// 检查IoT over MCP连接（按 transportType）
@@ -159,7 +159,7 @@ func (p *McpClientPool) sweepOfflineClients() {
 		staleIotConnections := make([]*McpClientInstance, 0)
 		client.iotMux.Lock()
 		for transportType, iotClient := range client.iotOverMcpByTransport {
-			if time.Since(iotClient.LastPing()) > 2*time.Minute {
+			if now.Sub(iotClient.LastPing()) > mcpConnectionOfflineTimeout {
 				staleIotConnections = append(staleIotConnections, iotClient)
 				delete(client.iotOverMcpByTransport, transportType)
 			} else {
@@ -168,8 +168,7 @@ func (p *McpClientPool) sweepOfflineClients() {
 		}
 		client.iotMux.Unlock()
 		for _, iotClient := range staleIotConnections {
-			iotClient.setConnected(false)
-			iotClient.cancel()
+			iotClient.closeWithReason("offline_timeout")
 		}
 
 		// 如果没有任何活跃连接，移除客户端

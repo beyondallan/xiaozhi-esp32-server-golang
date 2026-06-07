@@ -123,9 +123,9 @@ vad:
     model_path: "config/models/vad/silero_vad.onnx"
     threshold: 0.5
     min_silence_duration_ms: 100
-    sample_rate: 16000     # only 16000
+    sample_rate: 16000     # 8000 or 16000
     channels: 1
-    pool_size: 10
+    # pool_size: 10        # optional; defaults to CPU core count
     acquire_timeout_ms: 3000
 
 # 自动语音识别（ASR）配置

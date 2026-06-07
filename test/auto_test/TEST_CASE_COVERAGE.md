@@ -71,6 +71,8 @@ CGO_LDFLAGS="-lm" go run -buildvcs=false -tags nolibopusfile ./test/auto_test \
 | `mcp_initialize` | WebSocket hello，声明 `features.mcp=true` | 收到 MCP `initialize` 和 `tools/list`；客户端 result id 匹配请求 id |
 | `hello_without_mcp_no_initialize` | WebSocket hello，不声明 MCP feature | hello 成功；负向窗口内无 MCP `initialize/tools/list` |
 | `mcp_duplicate_hello_no_reinitialize` | 启用 MCP 的 WebSocket hello；MCP 初始化完成后再次 hello | hello ack 数量为 2；MCP 初始化只发生 1 次 |
+| `agent_ws_endpoint_mcp` | 智能体 MCP server 通过 `/mcp?token=...` 反连主程序 | endpoint 鉴权成功；主程序下发 MCP `initialize` 和 `tools/list`；短时保活不掉线 |
+| `agent_ws_endpoint_mcp_keepalive` | 智能体 MCP server 反连后持续挂机，跨过 2 分钟离线窗口和 10 分钟工具刷新边界 | 收到主程序 JSON-RPC `ping`；10 分钟后再次收到 `tools/list`；连接未断开。该用例为显式选择用例，不包含在 `all` 中 |
 | `abort_after_listen_start` | WebSocket hello；`listen start manual`；发送 `abort` | abort 发送成功；控制链路不报错 |
 | `abort_during_tts` | WebSocket hello；manual 语音对话；TTS 开始后发送 `abort` | 已收到 STT/TTS；abort 后观察到 `tts stop` |
 | `realtime_interrupt` | WebSocket realtime 首轮语音触发 TTS；TTS 期间发送第二轮语音 | 第二轮 STT 成功；TTS stop/切换行为可观察 |
@@ -231,6 +233,31 @@ CGO_LDFLAGS="-lm" go run -buildvcs=false -tags nolibopusfile ./test/auto_test \
   - 首次 hello 触发一次完整 MCP 初始化
   - 第二次 hello 成功
   - duplicate hello 后不会重复收到 `initialize/tools/list`
+
+#### `agent_ws_endpoint_mcp`
+- 覆盖场景：智能体 WebSocket MCP endpoint 反连主程序 `/mcp?token=...`。
+- 测试流程：
+  - 根据 `-server` 的 host 派生 `ws(s)://host/mcp?token=...`
+  - 使用 `-endpoint_auth_token` 生成 `purpose=mcp-endpoint`、包含 `agentId` 的 HS256 JWT
+  - 在 auto_test 进程内启动一个 MCP server，提供 `hello_world` 与 `query_weather`
+  - MCP server 作为 WebSocket client 连接主程序 endpoint
+- 核心校验：
+  - endpoint 连接建立且 token 鉴权通过
+  - 主程序下发 MCP `initialize`
+  - 主程序下发 MCP `tools/list`
+  - auto_test MCP server 正确回传 result
+  - 初始连接短时保持稳定，不立即断开
+
+#### `agent_ws_endpoint_mcp_keepalive`
+- 覆盖场景：用户反馈的“智能体 WebSocket MCP endpoint 一段时间后断连”回归链路。
+- 测试流程：
+  - 复用 `agent_ws_endpoint_mcp` 的连接方式
+  - 持续保持连接，等待主程序心跳和工具刷新周期
+  - 该用例耗时较长，默认不包含在 `-cases all`，需要显式指定
+- 核心校验：
+  - 超过 2 分钟离线判定窗口后仍能收到主程序 JSON-RPC `ping`
+  - 跨过 10 分钟工具刷新边界后再次收到 `tools/list`
+  - 过程中连接未断开
 
 ---
 
@@ -533,6 +560,7 @@ CGO_LDFLAGS="-lm" go run -buildvcs=false -tags nolibopusfile ./test/auto_test \
 - realtime stop/start 恢复识别校验
 - MCP `initialize` / `tools/list` 次数校验
 - MCP `result` 与请求 `id` 匹配校验
+- 智能体 WebSocket MCP endpoint 反连、JWT 鉴权、JSON-RPC `ping` 保活、周期性 `tools/list` 刷新校验
 - iot `success` 响应校验
 - abort 已发送校验
 - abort 后出现 `tts stop` 校验
@@ -566,6 +594,30 @@ CGO_LDFLAGS="-lm" go run -buildvcs=false -tags nolibopusfile ./test/auto_test \
   -device ws-regression-device \
   -cases auto1_roundtrip,auto2_roundtrip,realtime_roundtrip,injected_message_skip_llm,realtime_interrupt,realtime_duplicate_start_ignored \
   -case_timeout 80s
+```
+
+### 智能体 WebSocket MCP Endpoint 回归
+
+适合改动 `/mcp` endpoint、MCP session、工具列表刷新、状态管理、离线判定、重连/保活策略后运行：
+
+```bash
+CGO_LDFLAGS="-lm" go run -buildvcs=false -tags nolibopusfile ./test/auto_test \
+  -runner auto \
+  -server ws://localhost:9990/xiaozhi/v1/ \
+  -device smoke-agent \
+  -cases agent_ws_endpoint_mcp \
+  -endpoint_auth_token xiaozhi_mcp_openclaw_secret_key
+```
+
+长连接保活与 10 分钟工具刷新边界回归：
+
+```bash
+CGO_LDFLAGS="-lm" go run -buildvcs=false -tags nolibopusfile ./test/auto_test \
+  -runner auto \
+  -server ws://localhost:9990/xiaozhi/v1/ \
+  -device smoke-agent \
+  -cases agent_ws_endpoint_mcp_keepalive \
+  -endpoint_auth_token xiaozhi_mcp_openclaw_secret_key
 ```
 
 ### MQTT / UDP 主链路

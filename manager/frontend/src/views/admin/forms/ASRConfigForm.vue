@@ -89,6 +89,22 @@
           <el-option label="16000" :value="16000" />
         </el-select>
       </el-form-item>
+      <el-form-item label="语言提示" prop="aliyun_funasr.language_hints">
+        <el-select
+          v-model="model.aliyun_funasr.language_hints"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          placeholder="zh"
+          style="width: 100%"
+        >
+          <el-option label="中文 zh" value="zh" />
+          <el-option label="英文 en" value="en" />
+          <el-option label="日语 ja" value="ja" />
+          <el-option label="韩语 ko" value="ko" />
+        </el-select>
+      </el-form-item>
       <el-form-item label="词表ID" prop="aliyun_funasr.vocabulary_id">
         <el-input v-model="model.aliyun_funasr.vocabulary_id" placeholder="可以为空" />
       </el-form-item>
@@ -259,6 +275,7 @@ const ASR_PROVIDER_DEFAULTS = {
       model: 'fun-asr-realtime',
       format: 'pcm',
       sample_rate: 16000,
+      language_hints: ['zh'],
       vocabulary_id: '',
       disfluency_removal_enabled: false,
       timeout: 30
@@ -323,12 +340,29 @@ function cloneDefaultData(provider) {
   return JSON.parse(JSON.stringify(data))
 }
 
+function normalizeLanguageHints(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item).trim()).filter(Boolean)
+  }
+  if (typeof value === 'string') {
+    return value.split(/[，,;；]/).map(item => item.trim()).filter(Boolean)
+  }
+  return []
+}
+
 function ensureProviderData(provider) {
   if (!provider || !props.model || !ASR_PROVIDER_DEFAULTS[provider]) return
   const current = props.model[provider]
   props.model[provider] = { ...cloneDefaultData(provider), ...(current || {}) }
   if (provider === 'funasr' && !props.model.funasr.mode) {
     props.model.funasr.mode = 'offline'
+  }
+  if (provider === 'aliyun_funasr') {
+    const hasLanguageHints = current && Object.prototype.hasOwnProperty.call(current, 'language_hints')
+    const source = hasLanguageHints
+      ? props.model.aliyun_funasr.language_hints
+      : (props.model.aliyun_funasr.language || props.model.aliyun_funasr.language_hints)
+    props.model.aliyun_funasr.language_hints = normalizeLanguageHints(source)
   }
 }
 

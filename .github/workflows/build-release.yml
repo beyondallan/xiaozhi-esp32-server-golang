@@ -165,11 +165,21 @@ jobs:
           fi
           echo "SHERPA_LIB_DIR=$SHERPA_LIB_DIR" >> $GITHUB_ENV
 
+      - name: Download ONNX Runtime headers
+        run: |
+          ORT_VERSION="1.21.0"
+          curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-osx-universal2-${ORT_VERSION}.tgz" -o /tmp/onnxruntime-osx.tgz
+          tar -xzf /tmp/onnxruntime-osx.tgz -C /tmp
+          echo "ORT_INCLUDE_DIR=/tmp/onnxruntime-osx-universal2-${ORT_VERSION}/include" >> $GITHUB_ENV
+
       - name: Build macOS binary
         env:
           GOOS: darwin
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "1"
+          C_INCLUDE_PATH: ${{ env.ORT_INCLUDE_DIR }}
+          LIBRARY_PATH: ${{ env.SHERPA_LIB_DIR }}
+          CGO_LDFLAGS: -L${{ env.SHERPA_LIB_DIR }}
         run: |
           go mod tidy
           go build -v -tags "nolibopusfile asr_server manager embed_ui" \

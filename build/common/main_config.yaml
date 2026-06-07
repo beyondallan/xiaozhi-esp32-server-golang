@@ -108,12 +108,12 @@ vad:
     vad_mode: 2             # VAD模式（0-3，越高越敏感）
   # Silero VAD配置
   silero_vad:
-    model_path: "config/models/vad/silero_vad.onnx"  # 模型文件路径
+    model_path: "models/vad/silero_vad.onnx"  # 模型文件路径
     threshold: 0.5                    # 检测阈值
     min_silence_duration_ms: 100      # 最小静默时间（毫秒）
     sample_rate: 16000                # 采样率
     channels: 1                       # 声道数
-    pool_size: 10                     # 连接池大小
+    # pool_size: 10                    # 可选；不配置时默认与CPU核心数一致
     acquire_timeout_ms: 3000          # 获取连接超时时间（毫秒）
   # TEN-VAD配置
   ten_vad:

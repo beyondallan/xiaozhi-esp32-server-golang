@@ -137,7 +137,7 @@ vad:
     min_silence_duration_ms: 100      # 最小静默时间（毫秒）
     sample_rate: 16000                # 采样率
     channels: 1                       # 声道数
-    pool_size: 10                     # 连接池大小
+    # pool_size: 10                    # 可选；不配置时默认与CPU核心数一致
     acquire_timeout_ms: 3000          # 获取连接超时时间（毫秒）
   # TEN-VAD配置
   ten_vad:
@@ -167,6 +167,7 @@ asr:
     model: "fun-asr-realtime"
     format: "pcm"        # only pcm
     sample_rate: 16000     # only 16000
+    language_hints: ["zh"]
     vocabulary_id: ""
     disfluency_removal_enabled: false
     timeout: 30
