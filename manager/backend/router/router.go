@@ -90,6 +90,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			internal.POST("/internal/pool/stats", poolStatsController.ReportPoolStats)                             // 上报资源池统计数据（内部服务接口）
 			internal.POST("/internal/devices/:device_name/switch-role", adminController.SwitchDeviceRoleByNameInternal)
 			internal.POST("/internal/devices/:device_name/restore-default-role", adminController.RestoreDeviceDefaultRoleInternal)
+			internal.POST("/internal/devices/:device_name/inject-message", chatHistoryController.InjectMessageInternal) // 注入消息到设备（内部服务接口，用于 mood update 等）
 		}
 
 		// 需要认证的路由

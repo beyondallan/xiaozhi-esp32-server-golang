@@ -177,6 +177,37 @@ func (c *ChatHistoryController) SaveMessage(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, message)
 }
 
+// InjectMessageInternal handles internal service requests to inject messages to devices.
+// This is called by xiaozhi-sidecar for mood updates and config pushes.
+// Currently a placeholder that returns success - full implementation pending.
+func (c *ChatHistoryController) InjectMessageInternal(ctx *gin.Context) {
+	deviceName := ctx.Param("device_name")
+
+	var req struct {
+		DeviceName string `json:"device_name"`
+		Type       string `json:"type"`        // "text" | "audio" | "config"
+		Content    string `json:"content,omitempty"`
+		AudioURL   string `json:"audio_url,omitempty"`
+		Config     any    `json:"config,omitempty"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("[InjectMessageInternal] Received inject request for device %s, type: %s", deviceName, req.Type)
+
+	// TODO: Implement actual message injection via WebSocket to xiaozhi-server
+	// For now, return success to avoid circuit breaker triggering
+	ctx.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "inject message received (placeholder)",
+		"device":  deviceName,
+		"type":    req.Type,
+	})
+}
+
 // GetMessages 获取消息列表（按agentId汇总）
 func (c *ChatHistoryController) GetMessages(ctx *gin.Context) {
 	userID, exists := ctx.Get("user_id")

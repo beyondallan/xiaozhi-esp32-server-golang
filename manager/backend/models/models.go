@@ -321,12 +321,15 @@ func (ChatMessage) TableName() string {
 
 // BeforeSave GORM hook - 序列化metadata
 func (m *ChatMessage) BeforeSave(tx *gorm.DB) error {
-	if m.Metadata != nil {
+	if m.Metadata != nil && len(m.Metadata) > 0 {
 		data, err := json.Marshal(m.Metadata)
 		if err != nil {
 			return err
 		}
 		m.MetadataJSON = string(data)
+	} else {
+		// MySQL JSON 列不允许空字符串，必须写入合法 JSON
+		m.MetadataJSON = "{}"
 	}
 	return nil
 }
