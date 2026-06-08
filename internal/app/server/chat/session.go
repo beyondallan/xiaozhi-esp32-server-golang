@@ -1201,7 +1201,12 @@ func (s *ChatSession) HandleListenStart(msg *ClientMessage) error {
 		if shouldInterruptOutputOnListenStart(msg.Mode, s.clientState.IsWelcomePlaying) {
 			// 非欢迎语保护场景下，listen start 代表新一轮监听接管，
 			// 需要主动停止当前 TTS/LLM，避免说和听同时进行。
-			s.StopSpeakingWithReason(true, fmt.Sprintf("HandleListenStart mode=%s", msg.Mode))
+			// 但如果当前没有任何输出在播放（TTS 已结束，欢迎语已完成），
+			// 则不需要调用 StopSpeaking，避免取消 SessionCtx 导致后续 OnListenStart 无法正常启动 ASR。
+			ttsActive := s.ttsManager != nil && s.ttsManager.ttsActive.Load()
+			if ttsActive || s.clientState.IsWelcomePlaying {
+				s.StopSpeakingWithReason(true, fmt.Sprintf("HandleListenStart mode=%s", msg.Mode))
+			}
 		}
 
 		s.clientState.ListenMode = msg.Mode
@@ -1225,10 +1230,21 @@ func (s *ChatSession) HandleListenStart(msg *ClientMessage) error {
 	s.clientState.RecordCommandArrival(CommandTypeListenStart, now)
 
 	// auto/manual 模式进入这里时，视为显式开启一轮新的拾音流程：
-	// 更新模式、停止旧输出，然后异步拉起 OnListenStart 做 ASR 初始化。
+	// 更新模式、清理旧输出，然后异步拉起 OnListenStart 做 ASR 初始化。
+	// 注意：不在这里调用 StopSpeakingWithReason(cancelSession=true)，
+	// 因为它会取消 SessionCtx 导致 ASR goroutine 过早退出；
+	// OnListenStart 中的 Destroy() 会正确处理 session 重置。
 	s.clientState.ListenMode = msg.Mode
 	log.Infof("设备 %s 拾音模式: %s", msg.DeviceID, msg.Mode)
-	s.StopSpeakingWithReason(true, fmt.Sprintf("HandleListenStart mode=%s", msg.Mode))
+
+	// 仅清理 TTS/LLM 队列并中断当前 TTS，不取消 session context
+	s.clientState.IsWelcomePlaying = false
+	s.ClearChatTextQueue()
+	s.llmManager.ClearLLMResponseQueue()
+	s.ttsManager.ClearTTSQueue()
+	interruptCtx, cancel := context.WithTimeout(context.Background(), stopSpeakingInterruptTimeout)
+	s.ttsManager.InterruptAndStopSyncWithReason(interruptCtx, true, context.Canceled, fmt.Sprintf("HandleListenStart mode=%s", msg.Mode))
+	cancel()
 
 	startSeq := s.beginListenStart()
 	go func() {
@@ -1379,6 +1395,33 @@ func (s *ChatSession) OnListenStart(startSeq uint64, shouldStartAudioIdleWindow 
 	s.asrManager.StartAsrRecognitionLoop(ctx, onMessageSave, onError)
 
 	return nil
+}
+
+// autoRestartAsrAfterTtsStop auto 模式下 TTS 结束后自动重启 ASR 识别
+// 解决设备不发送 listen start 导致 ASR 循环退出后无法继续对话的问题
+func (s *ChatSession) autoRestartAsrAfterTtsStop() {
+	state := s.clientState
+	if state == nil {
+		return
+	}
+	if state.GetListenPhase() != ListenPhaseIdle {
+		log.Debugf("autoRestartAsrAfterTtsStop skipped: listenPhase=%s", state.GetListenPhase())
+		return
+	}
+
+	// 重置 VAD 和 ASR 状态
+	state.VoiceStatus.Reset()
+	state.AsrAudioBuffer.ClearAsrAudioData()
+	state.Asr.ClearHistoryAudio()
+
+	// 重新设置监听相位并启动 ASR
+	startSeq := s.beginListenStart()
+	go func() {
+		if err := s.OnListenStart(startSeq, true); err != nil {
+			log.Errorf("auto模式TTS结束后ASR重启失败: device=%s err=%v", state.DeviceID, err)
+		}
+	}()
+	log.Infof("auto模式TTS结束后自动重启ASR: device=%s", state.DeviceID)
 }
 
 // startChat 开始对话

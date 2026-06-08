@@ -504,12 +504,28 @@ func (a *ASRManager) ProcessVadAudio(ctx context.Context) {
 					}
 
 					if state.IsSilence(idleDuration) { //从有声音到 静默的判断
+						// 增加语音时长前置校验：当前连续语音时长不足时，不触发 OnVoiceSilence，
+						// 避免 VAD 检测失败/音频异常导致误判"语音结束"。
+						voiceContinuousDuration := state.Vad.GetVoiceContinuousDuration()
+						voiceSessionDuration := state.Vad.GetVoiceDurationInSession()
+						if voiceContinuousDuration < 200 {
+							log.Debugf(
+								"静默超时但当前连续语音时长不足(%dms < 200ms)，跳过 OnVoiceSilence，继续等待用户说话: status=%s, idle=%dms, voice_continuous=%dms, voice_session=%dms",
+								voiceContinuousDuration,
+								state.Status,
+								idleDuration,
+								voiceContinuousDuration,
+								voiceSessionDuration,
+							)
+							continue
+						}
+
 						log.Debugf(
-							"判定语音结束，准备停止ASR: status=%s, idle=%dms, voice_duration=%dms, voice_duration_in_session=%dms, history_audio_samples=%d, pending_restart=%v",
+							"判定语音结束，准备停止ASR: status=%s, idle=%dms, voice_continuous=%dms, voice_session=%dms, history_audio_samples=%d, pending_restart=%v",
 							state.Status,
 							idleDuration,
-							state.Vad.GetVoiceDuration(),
-							state.Vad.GetVoiceDurationInSession(),
+							voiceContinuousDuration,
+							voiceSessionDuration,
 							state.Asr.GetHistoryAudioLen(),
 							state.AudioIdleTimeoutPending(),
 						)
@@ -560,6 +576,8 @@ func (a *ASRManager) RestartAsrRecognition(ctx context.Context) error {
 
 	state.Asr.ResetReceivedText()
 	state.VoiceStatus.Reset()
+	state.SetClientHaveVoice(false) // 清除残留标志，避免上一轮遗留的 clientHaveVoice 导致无语音时仍推音频到 ASR 通道
+	state.Vad.ResetVoiceDuration()  // 重置语音时长计数器，确保新轮次的连续语音时长从0开始
 	state.AsrAudioBuffer.ClearAsrAudioData()
 	state.Asr.ClearHistoryAudio() // 清空历史音频缓存
 

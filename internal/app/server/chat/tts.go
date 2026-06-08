@@ -1169,6 +1169,11 @@ func (t *TTSManager) finishTtsStopWithReason(ctx context.Context, sendTtsStop bo
 	t.forceStopTtsMetric(ctx, stopErr)
 	t.dispatchTTSTurnEndPolicy(ctx, stopErr)
 
+	// auto 模式下，TTS 结束后自动重启 ASR，不依赖设备发送 listen start
+	if t.clientState != nil && t.clientState.ListenMode == "auto" && t.session != nil {
+		t.session.autoRestartAsrAfterTtsStop()
+	}
+
 	return true
 }
 
