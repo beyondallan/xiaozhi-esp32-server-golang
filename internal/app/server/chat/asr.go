@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -236,6 +237,16 @@ func (a *ASRManager) ProcessVadAudio(ctx context.Context) {
 				if err != nil {
 					log.Errorf("解码失败: %v", err)
 					continue
+				}
+
+				// [DIAG] 计算 PCM 能量，判断音频是否真的是语音还是静音/噪声
+				var pcmEnergy float64
+				for i := 0; i < n; i++ {
+					v := float64(pcmFrame[i])
+					pcmEnergy += v * v
+				}
+				if n > 0 {
+					pcmEnergy = math.Sqrt(pcmEnergy / float64(n))
 				}
 
 				// 从实际解码后的数据动态计算帧大小和帧时长
@@ -508,7 +519,14 @@ func (a *ASRManager) ProcessVadAudio(ctx context.Context) {
 						// 避免 VAD 检测失败/音频异常导致误判"语音结束"。
 						voiceContinuousDuration := state.Vad.GetVoiceContinuousDuration()
 						voiceSessionDuration := state.Vad.GetVoiceDurationInSession()
-						if voiceContinuousDuration < 200 {
+						// VAD 抖动回退：ten_vad 在某些环境下会逐帧翻转（voice_continuous 永远为 0），
+						// 但 voice_session 仍在累积。若累计语音时长足够长且静默已超过 1 秒，
+						// 应当信任用户已说完，否则音频空闲超时看门狗会兜底触发 OnVoiceSilence
+						// 把 VoiceStop 永久卡在 true，导致后续所有音频被丢弃。
+						vadFlickerFallback := voiceContinuousDuration < 200 &&
+							voiceSessionDuration >= 200 &&
+							idleDuration >= 1000
+						if voiceContinuousDuration < 200 && !vadFlickerFallback {
 							log.Debugf(
 								"静默超时但当前连续语音时长不足(%dms < 200ms)，跳过 OnVoiceSilence，继续等待用户说话: status=%s, idle=%dms, voice_continuous=%dms, voice_session=%dms",
 								voiceContinuousDuration,

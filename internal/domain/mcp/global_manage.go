@@ -11,6 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"github.com/eino-contrib/jsonschema"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
@@ -564,11 +565,18 @@ func ConvertMcpToolListToInvokableToolList(tools []mcp.Tool, serverName string, 
 			continue
 		}
 
+		// 将 OpenAPI v3 schema 转换为 JSON Schema
+		jsonSchema, err := convertOpenAPI3ToJSONSchema(inputSchema)
+		if err != nil {
+			log.Errorf("convert openapi3 to jsonschema err: %+v", err)
+			continue
+		}
+
 		mcpToolInstance := &McpTool{
 			info: &schema.ToolInfo{
 				Name:        llmName,
 				Desc:        tool.Description,
-				ParamsOneOf: schema.NewParamsOneOfByOpenAPIV3(inputSchema),
+				ParamsOneOf: schema.NewParamsOneOfByJSONSchema(jsonSchema),
 			},
 			originName: originName,
 			serverName: serverName,
@@ -577,6 +585,24 @@ func ConvertMcpToolListToInvokableToolList(tools []mcp.Tool, serverName string, 
 		invokeTools[llmName] = mcpToolInstance
 	}
 	return invokeTools
+}
+
+// convertOpenAPI3ToJSONSchema 将 openapi3.Schema 转换为 jsonschema.Schema
+// 通过 JSON 序列化/反序列化实现，因为两者都是 JSON Schema 的表示
+func convertOpenAPI3ToJSONSchema(openAPISchema *openapi3.Schema) (*jsonschema.Schema, error) {
+	// 将 openapi3.Schema 序列化为 JSON
+	data, err := sonic.Marshal(openAPISchema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal openapi3 schema: %w", err)
+	}
+
+	// 反序列化为 jsonschema.Schema
+	var jsonSchema jsonschema.Schema
+	if err := sonic.Unmarshal(data, &jsonSchema); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal to jsonschema: %w", err)
+	}
+
+	return &jsonSchema, nil
 }
 
 // disconnect 断开连接

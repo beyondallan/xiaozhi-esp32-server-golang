@@ -1,18 +1,25 @@
-# 构建阶段（仅支持 amd64/x64 架构）
+# 构建阶段（使用 Ubuntu 22.04 + Go 1.24 基础镜像）
 # syntax=docker/dockerfile:1
-FROM --platform=linux/amd64 golang:1.24.4 AS builder
+FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
-# 设置非交互式安装环境变量
+# 安装 Go 1.24
 ENV DEBIAN_FRONTEND=noninteractive
-
-# 安装构建依赖
 RUN apt-get update && apt-get install -y \
+    wget \
+    build-essential \
     libopus-dev \
     libopusfile-dev \
-    pkg-config \
     libc++-dev \
     libc++abi-dev \
-    g++
+    pkg-config \
+    && wget -q https://go.dev/dl/go1.24.4.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz \
+    && rm go1.24.4.linux-amd64.tar.gz \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH=$PATH:/usr/local/go/bin
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
 
 # 复制 onnxruntime 库文件（仅 x64）
 COPY docker/lib/onnxruntime-linux-x64-1.21.0.tgz /tmp/
@@ -47,48 +54,46 @@ RUN echo "Installing ONNX Runtime for x64 architecture" && \
     fi && \
     cp -r ${ONNX_DIR}lib/* /usr/local/lib/ && \
     rm -rf /tmp/onnxruntime* && \
-    (ldconfig 2>&1 || echo "Warning: ldconfig failed, but continuing...")
+    ldconfig
 
-# 设置Go环境变量
-ENV ONNXRUNTIME_DIR=/usr/local
-ENV CGO_CFLAGS="-I${ONNXRUNTIME_DIR}/include/onnxruntime" 
-ENV CGO_LDFLAGS="-L${ONNXRUNTIME_DIR}/lib -lonnxruntime"
+# 设置 Go 环境
 ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
+ENV TZ=Asia/Shanghai
+
+# 在 workspace 根目录工作
+WORKDIR /build
+
+# 复制整个项目（构建上下文是 xiaozhi-esp32-server-golang 目录）
+COPY . ./xiaozhi-esp32-server-golang/
+
+# 校验 asr_server 子模块内容已带入构建上下文
+RUN test -f xiaozhi-esp32-server-golang/asr_server/server/setup.go || \
+    (echo "ERROR: asr_server 子模块内容缺失" && exit 1)
+
+# 设置 CGO 链接库路径（用于 onnxruntime 和 ten-vad）
+ENV ONNXRUNTIME_DIR=/usr/local
 ENV CGO_ENABLED=1
+ENV CGO_CFLAGS="-I${ONNXRUNTIME_DIR}/include/onnxruntime -I/build/xiaozhi-esp32-server-golang/lib/ten-vad/include"
+ENV CGO_LDFLAGS="-L${ONNXRUNTIME_DIR}/lib -lonnxruntime -L/build/xiaozhi-esp32-server-golang/lib/ten-vad/lib/Linux/x64"
 
-# 创建工作目录并复制源代码
-WORKDIR /app
-# 先复制 lib 目录（包含 ten-vad 的头文件和库文件，cgo 编译时需要）
-COPY lib ./lib
-COPY . .
+# 在 xiaozhi-esp32-server-golang 目录下构建
+RUN cd xiaozhi-esp32-server-golang && \
+    go build -o /build/xiaozhi_server ./cmd/server/
 
-# 校验 asr_server 子模块内容已带入构建上下文（CI 需 checkout 使用 submodules: recursive）
-RUN test -f asr_server/server/setup.go || (echo "ERROR: asr_server 子模块内容缺失，构建上下文中无 voice_server/server 包。CI 请确保 checkout 使用 submodules: recursive。" && exit 1)
-
-# 下载Go模块
-RUN go mod tidy
-
-# 设置 CGO 链接库路径（用于 ten-vad）
-ENV CGO_LDFLAGS="-L${ONNXRUNTIME_DIR}/lib -lonnxruntime -L/app/lib/ten-vad/lib/Linux/x64"
-ENV CGO_CFLAGS="-I${ONNXRUNTIME_DIR}/include/onnxruntime -I/app/lib/ten-vad/include"
-
-# 构建主程序
-RUN go build -o /app/xiaozhi_server ./cmd/server/
-
-# 运行阶段（仅支持 amd64/x64 架构）
+# 运行阶段（使用 Ubuntu 基础镜像以支持 libc++/libc++abi）
 FROM --platform=linux/amd64 ubuntu:22.04
 
-# 设置非交互式安装环境变量
+# 安装运行时依赖
 ENV DEBIAN_FRONTEND=noninteractive
-
-# 安装运行时依赖（最小化安装）
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     libopus0 \
     libopusfile0 \
     libc++1 \
     libc++abi1 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "Asia/Shanghai" > /etc/timezone
 
 # 复制 onnxruntime 库文件（仅 x64）
 COPY docker/lib/onnxruntime-linux-x64-1.21.0.tgz /tmp/
@@ -109,13 +114,7 @@ RUN echo "Installing ONNX Runtime for x64 architecture" && \
         exit 1; \
     fi && \
     echo "Found ONNX Runtime directory: ${ONNX_DIR}" && \
-    mkdir -p /usr/local/include/onnxruntime && \
-    if [ ! -d "${ONNX_DIR}include" ]; then \
-        echo "Error: ${ONNX_DIR}include directory not found" && \
-        ls -la "${ONNX_DIR}" && \
-        exit 1; \
-    fi && \
-    cp -r ${ONNX_DIR}include/* /usr/local/include/onnxruntime/ && \
+    mkdir -p /usr/local/lib && \
     if [ ! -d "${ONNX_DIR}lib" ]; then \
         echo "Error: ${ONNX_DIR}lib directory not found" && \
         ls -la "${ONNX_DIR}" && \
@@ -123,26 +122,26 @@ RUN echo "Installing ONNX Runtime for x64 architecture" && \
     fi && \
     cp -r ${ONNX_DIR}lib/* /usr/local/lib/ && \
     rm -rf /tmp/onnxruntime* && \
-    (ldconfig 2>&1 || echo "Warning: ldconfig failed, but continuing...")
+    ldconfig
 
 # 设置ONNX Runtime环境变量
 ENV ONNXRUNTIME_DIR=/usr/local
-ENV CGO_CFLAGS="-I${ONNXRUNTIME_DIR}/include/onnxruntime" 
+ENV CGO_CFLAGS="-I${ONNXRUNTIME_DIR}/include/onnxruntime"
 ENV CGO_LDFLAGS="-L${ONNXRUNTIME_DIR}/lib -lonnxruntime"
 
 # 设置工作目录
 WORKDIR /workspace
 
 # 从构建阶段复制编译后的二进制文件
-COPY --from=builder /app/xiaozhi_server /workspace/bin/xiaozhi_server
+COPY --from=builder /build/xiaozhi_server /workspace/bin/xiaozhi_server
 # 复制 lib 目录（包含 ten-vad 运行时库）
-COPY --from=builder /app/lib /workspace/lib
+COPY --from=builder /build/xiaozhi-esp32-server-golang/lib /workspace/lib
 
 # 创建必要的目录
 RUN mkdir -p /workspace/logs /workspace/config
 
 # 设置运行时库路径（用于 ten-vad）
-ENV LD_LIBRARY_PATH=/workspace/lib:/workspace/lib/ten-vad/lib/Linux/x64
+ENV LD_LIBRARY_PATH=/workspace/lib:/workspace/lib/ten-vad/lib/Linux/x64:/usr/local/lib
 
 # 暴露端口: http/websocket:8989, udp:8990, mqtt: 1883,2883,8883
 EXPOSE 8989 8990 1883 2883 8883

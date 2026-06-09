@@ -97,11 +97,19 @@ func (l *LocalMCPManager) RegisterToolFunc(name, description string, inputParams
 		log.Errorf("Failed to convert struct to openapi3 schema: %v", err)
 		return err
 	}
+
+	// 将 OpenAPI v3 schema 转换为 JSON Schema
+	jsonSchema, err := convertOpenAPI3ToJSONSchema(inputSchema)
+	if err != nil {
+		log.Errorf("Failed to convert openapi3 to jsonschema: %v", err)
+		return err
+	}
+
 	tool := &McpTool{
 		info: &schema.ToolInfo{
 			Name:        name,
 			Desc:        description,
-			ParamsOneOf: schema.NewParamsOneOfByOpenAPIV3(inputSchema),
+			ParamsOneOf: schema.NewParamsOneOfByJSONSchema(jsonSchema),
 		},
 		isLocal:      true,
 		localHandler: handler,

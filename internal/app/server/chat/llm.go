@@ -280,6 +280,10 @@ type LLMManager struct {
 	// key: role (user/assistant), value: MessageID
 	lastMessageID   map[string]string
 	lastMessageIDMu sync.RWMutex // 保护 lastMessageID 的并发访问
+
+	// 工具调用去重：防止相同工具在短时间内被重复调用
+	recentToolCalls   map[string]time.Time // toolName -> lastCallTime
+	recentToolCallsMu sync.RWMutex
 }
 
 func NewLLMManager(clientState *ClientState, serverTransport *ServerTransport, ttsManager *TTSManager, session *ChatSession, transformRegistry *streamtransform.Registry) *LLMManager {
@@ -291,7 +295,45 @@ func NewLLMManager(clientState *ClientState, serverTransport *ServerTransport, t
 		transformRegistry: transformRegistry,
 		llmResponseQueue:  util.NewQueue[LLMResponseChannelItem](10),
 		lastMessageID:     make(map[string]string),
+		recentToolCalls:   make(map[string]time.Time),
 	}
+}
+
+// shouldSkipToolCall 检查是否应该跳过工具调用（防止重复调用）
+// 返回 true 表示应该跳过，false 表示可以执行
+func (l *LLMManager) shouldSkipToolCall(toolName string) bool {
+	if l == nil || toolName == "" {
+		return false
+	}
+
+	// 去重时间窗口：30秒内相同工具不重复调用
+	const toolCallDedupWindow = 30 * time.Second
+
+	l.recentToolCallsMu.RLock()
+	lastCallTime, exists := l.recentToolCalls[toolName]
+	l.recentToolCallsMu.RUnlock()
+
+	if !exists {
+		return false
+	}
+
+	if time.Since(lastCallTime) < toolCallDedupWindow {
+		log.Infof("工具调用去重：跳过 %s（距上次调用 %v）", toolName, time.Since(lastCallTime))
+		return true
+	}
+
+	return false
+}
+
+// recordToolCall 记录工具调用时间
+func (l *LLMManager) recordToolCall(toolName string) {
+	if l == nil || toolName == "" {
+		return
+	}
+
+	l.recentToolCallsMu.Lock()
+	l.recentToolCalls[toolName] = time.Now()
+	l.recentToolCallsMu.Unlock()
 }
 
 func (l *LLMManager) openOutputPipeline(ctx context.Context) (*streamtransform.Pipeline, error) {

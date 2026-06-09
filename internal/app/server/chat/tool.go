@@ -239,6 +239,13 @@ func (e *toolCallExecutor) executeToolCall(order int, toolCall schema.ToolCall) 
 	if e.manager != nil && e.manager.serverTransport != nil {
 		transportType = e.manager.serverTransport.GetTransportType()
 	}
+
+	// 工具调用去重检查
+	if e.manager.shouldSkipToolCall(toolName) {
+		resultMessage.Content = fmt.Sprintf("工具 %s 在30秒内已被调用过，请稍后再试或换个话题", toolName)
+		return toolCallExecutionResult{order: order, message: resultMessage}
+	}
+
 	toolObj, ok := mcp.GetToolByNameWithTransport(state.DeviceID, state.AgentID, transportType, toolName, state.DeviceConfig.MCPServiceNames)
 	if !ok || toolObj == nil {
 		log.Errorf("未找到工具: %s", toolName)
@@ -247,6 +254,10 @@ func (e *toolCallExecutor) executeToolCall(order int, toolCall schema.ToolCall) 
 	}
 
 	log.Infof("进行工具调用请求: %s, 参数: %+v", toolName, toolCall.Function.Arguments)
+
+	// 记录工具调用
+	e.manager.recordToolCall(toolName)
+
 	startTs := time.Now().UnixMilli()
 	fcResult, err := toolObj.InvokableRun(e.toolCtx, toolCall.Function.Arguments)
 	if err != nil {

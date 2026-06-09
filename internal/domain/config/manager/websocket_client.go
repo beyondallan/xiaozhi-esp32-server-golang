@@ -982,10 +982,10 @@ func toolInfoToSchemaMap(paramsOneOf interface{}) map[string]interface{} {
 	}
 
 	// ParamsOneOf 内部字段未导出，直接 json.Marshal 可能得到 {}。
-	// 优先走官方 ToOpenAPIV3()，确保能取到真实参数 schema。
+	// 优先走官方 ToJSONSchema()，确保能取到真实参数 schema。
 	if p, ok := paramsOneOf.(*einoschema.ParamsOneOf); ok && p != nil {
-		if openAPISchema, err := p.ToOpenAPIV3(); err == nil && openAPISchema != nil {
-			raw, err := json.Marshal(openAPISchema)
+		if jsonSchema, err := p.ToJSONSchema(); err == nil && jsonSchema != nil {
+			raw, err := json.Marshal(jsonSchema)
 			if err == nil {
 				decoded := map[string]interface{}{}
 				if err = json.Unmarshal(raw, &decoded); err == nil {

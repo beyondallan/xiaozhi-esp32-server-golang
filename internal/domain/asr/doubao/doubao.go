@@ -205,18 +205,9 @@ func (d *DoubaoV2ASR) receiveStreamResults(ctx context.Context, streamID string,
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debugf("[doubao-asr:%s] receiveStreamResults 上下文已取消", streamID)
 			return
 		case result, ok := <-asrResponseChan:
 			if !ok {
-				log.Debugf(
-					"[doubao-asr:%s] receiveStreamResults asrResponseChan 已关闭: packets=%d, non_empty_packets=%d, last_non_empty=%q, last_non_empty_utterance=%q",
-					streamID,
-					packetCount,
-					nonEmptyPacketCount,
-					previewDoubaoText(lastNonEmptyText, 24),
-					previewDoubaoText(lastNonEmptyUtterance, 24),
-				)
 				return
 			}
 			packetCount++

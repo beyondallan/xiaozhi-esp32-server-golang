@@ -1227,6 +1227,17 @@ func (s *ChatSession) HandleListenStart(msg *ClientMessage) error {
 		return nil
 	}
 
+	// auto 模式下，TTS 结束后 autoRestartAsrAfterTtsStop 已自动重启 ASR 并把 phase 推进到 listening。
+	// 此时设备因收到 tts:stop 而补发的 listen:start 属于冗余请求。
+	// 若放行进入下面的流程，beginListenStart 会再次把 phase 改为 starting 并触发第二次 OnListenStart，
+	// 其 Destroy() 将取消刚刚建好的 ASR 流，导致 VAD 状态紊乱、voice_continuous 永远无法累积，
+	// 最终只能依赖空闲超时看门狗触发 OnVoiceSilence 设置 VoiceStop=true，但此时没有 TTS/LLM 流程
+	// 去清零 VoiceStop，造成后续所有音频被永久丢弃。
+	if s.clientState.GetListenPhase() == ListenPhaseListening {
+		log.Infof("设备 %s 已有 auto-restarted ASR 在运行中（phase=listening），忽略冗余 listen start", msg.DeviceID)
+		return nil
+	}
+
 	s.clientState.RecordCommandArrival(CommandTypeListenStart, now)
 
 	// auto/manual 模式进入这里时，视为显式开启一轮新的拾音流程：
@@ -1404,15 +1415,18 @@ func (s *ChatSession) autoRestartAsrAfterTtsStop() {
 	if state == nil {
 		return
 	}
-	if state.GetListenPhase() != ListenPhaseIdle {
-		log.Debugf("autoRestartAsrAfterTtsStop skipped: listenPhase=%s", state.GetListenPhase())
-		return
-	}
 
-	// 重置 VAD 和 ASR 状态
+	// 无论 ListenPhase 是什么，都必须先重置 VoiceStatus，
+	// 确保 VoiceStop 标志被清零，让后续进入的音频帧能正常进入 VAD/ASR。
+	// 否则若 phase 非 Idle 导致跳过重启，VoiceStop 会永久停留在 true，
+	// 所有后续音频都被 audioMessageLoop 直接丢弃，设备永远无法重新对话。
 	state.VoiceStatus.Reset()
 	state.AsrAudioBuffer.ClearAsrAudioData()
 	state.Asr.ClearHistoryAudio()
+
+	if state.GetListenPhase() != ListenPhaseIdle {
+		return
+	}
 
 	// 重新设置监听相位并启动 ASR
 	startSeq := s.beginListenStart()

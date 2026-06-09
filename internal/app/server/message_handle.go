@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"hash/fnv"
+	"net/http"
 	"runtime"
 	"sync"
 	"time"
@@ -331,6 +333,68 @@ func (w *MessageWorker) saveMessageText(ctx context.Context, event *eventbus.Add
 		log.Errorf("保存消息失败, device_id: %s, message_id: %s, error: %v",
 			event.ClientState.DeviceID, event.MessageID, err)
 	}
+
+	// 同步用户消息到 Ti-social（如果配置了 Sidecar URL）
+	// 只同步 user 消息，避免循环（assistant 消息已通过 Ti-social 流式路径同步）
+	if event.Msg.Role == schema.User {
+		w.syncToSidecar(ctx, event)
+	}
+}
+
+// syncToSidecar 同步用户消息到 Ti-social Sidecar
+// 用于设备上行消息（文本/语音）在 Ti-social IM 中可见
+func (w *MessageWorker) syncToSidecar(ctx context.Context, event *eventbus.AddMessageEvent) {
+	sidecarURL := util.GetSidecarURL()
+	if sidecarURL == "" {
+		return // 未配置，跳过
+	}
+
+	// 构建请求体
+	payload := map[string]interface{}{
+		"device_id":       event.ClientState.DeviceID,
+		"session_id":      event.ClientState.SessionID,
+		"message_id":      event.MessageID,
+		"role":            "user",
+		"content":         event.Msg.Content,
+		"audio_data":      "", // 不传输音频，由 Ti-social 自己处理
+		"audio_format":    "",
+		"audio_duration":  0,
+		"audio_size":      0,
+		"metadata":        nil,
+		"created_at":      event.Timestamp.Format(time.RFC3339),
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Warnf("序列化 sidecar 请求失败: %v", err)
+		return
+	}
+
+	// 异步发送，不阻塞主流程
+	go func() {
+		client := &http.Client{Timeout: 5 * time.Second}
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+			sidecarURL+"/api/internal/device/message",
+			bytes.NewReader(data))
+		if err != nil {
+			log.Warnf("创建 sidecar 请求失败: %v", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Warnf("同步消息到 sidecar 失败, device_id: %s, error: %v",
+				event.ClientState.DeviceID, err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+			log.Warnf("sidecar 返回非成功状态, device_id: %s, status: %d",
+				event.ClientState.DeviceID, resp.StatusCode)
+		}
+	}()
 }
 
 // updateMessageAudio 更新消息音频（第二阶段）
