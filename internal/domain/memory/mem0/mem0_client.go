@@ -88,10 +88,11 @@ func GetMem0ClientWithConfig(config map[string]interface{}) (*Mem0Client, error)
 		}
 
 		// 验证必要配置
-		if mem0Cfg.APIKey == "" {
-			err = fmt.Errorf("mem0.api_key 配置缺失或为空")
-			return
-		}
+		// apps/memory 服务不需要 API key，允许为空
+		// if mem0Cfg.APIKey == "" {
+		// 	err = fmt.Errorf("mem0.api_key 配置缺失或为空")
+		// 	return
+		// }
 
 		// 设置默认值
 		if mem0Cfg.BaseUrl == "" {
@@ -100,12 +101,12 @@ func GetMem0ClientWithConfig(config map[string]interface{}) (*Mem0Client, error)
 
 		// 创建 mem0 客户端
 		clientOptions := client.ClientOptions{
-			APIKey: mem0Cfg.APIKey,
-			/*Host:             mem0Cfg.Host,
+			APIKey:           mem0Cfg.APIKey,
+			Host:             mem0Cfg.BaseUrl, // 使用 BaseUrl 作为 Host
 			OrganizationName: mem0Cfg.OrganizationName,
 			ProjectName:      mem0Cfg.ProjectName,
 			OrganizationID:   mem0Cfg.OrganizationID,
-			ProjectID:        mem0Cfg.ProjectID,*/
+			ProjectID:        mem0Cfg.ProjectID,
 		}
 
 		mem0Client, clientErr := client.NewMemoryClient(clientOptions)

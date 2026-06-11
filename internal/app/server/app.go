@@ -17,6 +17,7 @@ import (
 	config_types "xiaozhi-esp32-server-golang/internal/domain/config/types"
 	"xiaozhi-esp32-server-golang/internal/domain/mcp"
 	"xiaozhi-esp32-server-golang/internal/domain/openclaw"
+	"xiaozhi-esp32-server-golang/internal/pkg/nats"
 	"xiaozhi-esp32-server-golang/internal/pool"
 	"xiaozhi-esp32-server-golang/internal/util"
 	log "xiaozhi-esp32-server-golang/logger"
@@ -34,6 +35,9 @@ type App struct {
 
 	// ChatManager管理 - 使用concurrent map
 	chatManagers cmap.ConcurrentMap[string, *chat.ChatManager]
+
+	// NATS client for proximity events (optional, nil if not configured)
+	natsClient *nats.Client
 }
 
 func NewApp() *App {
@@ -41,6 +45,30 @@ func NewApp() *App {
 	app := &App{
 		chatManagers: cmap.New[*chat.ChatManager](),
 	}
+
+	// Initialize NATS client for proximity events (optional)
+	if viper.IsSet("nats.url") {
+		natsCfg := nats.Config{
+			URL:           viper.GetString("nats.url"),
+			MaxReconnects: viper.GetInt("nats.max_reconnects"),
+			ReconnectWait: viper.GetInt("nats.reconnect_wait"),
+			PingInterval:  viper.GetInt("nats.ping_interval"),
+		}
+		if natsCfg.MaxReconnects == 0 {
+			natsCfg.MaxReconnects = -1
+		}
+		if natsCfg.ReconnectWait == 0 {
+			natsCfg.ReconnectWait = 2
+		}
+		app.natsClient, err = nats.New(natsCfg)
+		if err != nil {
+			log.Errorf("NATS 客户端初始化失败（近场社交不可用）: %v", err)
+			app.natsClient = nil
+		} else {
+			log.Info("NATS 客户端初始化成功（近场社交已启用）")
+		}
+	}
+
 	mcp.RegisterCurrentDeviceTransportResolver(func(deviceID string) string {
 		chatManager, exists := app.GetChatManager(deviceID)
 		if !exists || chatManager == nil {
@@ -325,7 +353,11 @@ func (a *App) OnNewConnection(transport types.IConn) {
 	}
 
 	// 创建新的ChatManager
-	chatManager, err := chat.NewChatManager(deviceID, transport)
+	var opts []chat.ChatManagerOption
+	if a.natsClient != nil {
+		opts = append(opts, chat.WithNATSPublisher(a.natsClient))
+	}
+	chatManager, err := chat.NewChatManager(deviceID, transport, opts...)
 	if err != nil {
 		log.Errorf("创建chatManager失败: %v", err)
 		return

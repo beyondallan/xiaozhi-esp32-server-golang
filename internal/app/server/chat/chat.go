@@ -28,6 +28,12 @@ import (
 	log "xiaozhi-esp32-server-golang/logger"
 )
 
+// ProximityPublisher can publish raw data to JetStream for proximity events.
+type ProximityPublisher interface {
+	PublishJetStream(subject string, data []byte) error
+	IsConnected() bool
+}
+
 type ChatManager struct {
 	DeviceID  string
 	transport types_conn.IConn
@@ -37,6 +43,7 @@ type ChatManager struct {
 	mcpTransport      *McpTransport
 	hookHub           *chathooks.Hub
 	transformRegistry *streamtransform.Registry
+	natsPublisher     ProximityPublisher // NATS publisher for proximity events (optional)
 
 	sessionMu sync.RWMutex
 	session   *ChatSession
@@ -122,6 +129,13 @@ type brokerOnlineAwareTransport interface {
 }
 
 type ChatManagerOption func(*ChatManager)
+
+// WithNATSPublisher sets the NATS publisher for proximity event publishing.
+func WithNATSPublisher(pub ProximityPublisher) ChatManagerOption {
+	return func(cm *ChatManager) {
+		cm.natsPublisher = pub
+	}
+}
 
 var (
 	chatHookAsyncExecutorOnce sync.Once
@@ -445,6 +459,8 @@ func (c *ChatManager) handleTextMessage(message []byte) error {
 		return c.HandleIoTMessage(&clientMsg)
 	case MessageTypeMcp:
 		return c.HandleMcpMessage(&clientMsg)
+	case MessageTypeEvent:
+		return c.HandleEventMessage(&clientMsg)
 	case MessageTypeGoodBye:
 		return c.HandleGoodByeMessage(&clientMsg)
 	default:

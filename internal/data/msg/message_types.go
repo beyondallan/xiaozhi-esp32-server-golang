@@ -31,6 +31,23 @@ const (
 	MessageTypeMcp        = "mcp"         // MCP消息
 	MessageTypeGoodBye    = "goodbye"     // 再见消息
 	MessageTypeSpeakReady = "speak_ready" // 设备已准备好接收主动播报
+	MessageTypeEvent      = "event"       // 设备事件上报（近场检测等）
+)
+
+// 设备事件类型
+const (
+	EventDeviceProximity = "device_proximity" // 近场检测事件
+)
+
+// 近场事件 action
+const (
+	ProximityActionEnter = "enter"
+	ProximityActionLeave = "leave"
+)
+
+// 近场事件 NATS Subject（与 packages/pkg/nats/events 保持一致）
+const (
+	SubjectXiaozhiProximityReport = "xiaozhi.proximity.device.report"
 )
 
 // 服务器消息类型常量

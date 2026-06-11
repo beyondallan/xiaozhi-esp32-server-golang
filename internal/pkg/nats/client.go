@@ -191,3 +191,19 @@ func (c *Client) CreateStream(name string, subjects []string) error {
 func (c *Client) DeleteStream(name string) error {
 	return c.js.DeleteStream(name)
 }
+
+// PublishJetStream publishes raw data directly to JetStream.
+// This is used when the caller needs to control the envelope format
+// (e.g., publishing Ti-social shared-format envelopes for cross-service compatibility).
+func (c *Client) PublishJetStream(subject string, data []byte) error {
+	if c.js == nil {
+		return fmt.Errorf("JetStream context not available")
+	}
+	_, err := c.js.Publish(subject, data)
+	return err
+}
+
+// JS returns the JetStream context for advanced use cases.
+func (c *Client) JS() natslib.JetStreamContext {
+	return c.js
+}
