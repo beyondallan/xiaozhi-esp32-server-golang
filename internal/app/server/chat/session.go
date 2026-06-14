@@ -386,10 +386,9 @@ func (s *ChatSession) loadFromManager() ([]*schema.Message, error) {
 	}
 
 	req := &history.GetMessagesRequest{
-		DeviceID:  s.clientState.DeviceID,
-		AgentID:   s.clientState.AgentID,
-		SessionID: s.clientState.SessionID,
-		Limit:     20,
+		DeviceID: s.clientState.DeviceID,
+		AgentID:  s.clientState.AgentID,
+		Limit:    20,
 	}
 
 	resp, err := client.GetMessages(s.ctx, req)

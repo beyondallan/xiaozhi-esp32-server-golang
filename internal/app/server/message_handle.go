@@ -334,34 +334,47 @@ func (w *MessageWorker) saveMessageText(ctx context.Context, event *eventbus.Add
 			event.ClientState.DeviceID, event.MessageID, err)
 	}
 
-	// 同步用户消息到 Ti-social（如果配置了 Sidecar URL）
-	// 只同步 user 消息，避免循环（assistant 消息已通过 Ti-social 流式路径同步）
-	if event.Msg.Role == schema.User {
+	// 同步设备会话消息到 Ti-social（如果配置了 Sidecar URL）
+	// 只同步 user/assistant，tool/system 仅保留在 Xiaozhi 历史中。
+	if event.Msg.Role == schema.User || event.Msg.Role == schema.Assistant {
 		w.syncToSidecar(ctx, event)
 	}
 }
 
-// syncToSidecar 同步用户消息到 Ti-social Sidecar
-// 用于设备上行消息（文本/语音）在 Ti-social IM 中可见
+// syncToSidecar 同步设备会话消息到 Ti-social Sidecar。
+// 用于设备上行消息和玩偶回复在 Ti-social 玩偶聊天历史中可见。
 func (w *MessageWorker) syncToSidecar(ctx context.Context, event *eventbus.AddMessageEvent) {
 	sidecarURL := util.GetSidecarURL()
 	if sidecarURL == "" {
 		return // 未配置，跳过
 	}
 
+	if event.Msg.Role == schema.Assistant && event.Msg.Content == "" {
+		log.Debugf("跳过空助手消息同步到 sidecar, device_id: %s, message_id: %s",
+			event.ClientState.DeviceID, event.MessageID)
+		return
+	}
+
+	role := string(event.Msg.Role)
+	if event.Msg.Role == schema.User {
+		role = string(history.MessageTypeUser)
+	} else if event.Msg.Role == schema.Assistant {
+		role = string(history.MessageTypeAssistant)
+	}
+
 	// 构建请求体
 	payload := map[string]interface{}{
-		"device_id":       event.ClientState.DeviceID,
-		"session_id":      event.ClientState.SessionID,
-		"message_id":      event.MessageID,
-		"role":            "user",
-		"content":         event.Msg.Content,
-		"audio_data":      "", // 不传输音频，由 Ti-social 自己处理
-		"audio_format":    "",
-		"audio_duration":  0,
-		"audio_size":      0,
-		"metadata":        nil,
-		"created_at":      event.Timestamp.Format(time.RFC3339),
+		"device_id":      event.ClientState.DeviceID,
+		"session_id":     event.ClientState.SessionID,
+		"message_id":     event.MessageID,
+		"role":           role,
+		"content":        event.Msg.Content,
+		"audio_data":     "", // 不传输音频，由 Ti-social 自己处理
+		"audio_format":   "",
+		"audio_duration": 0,
+		"audio_size":     0,
+		"metadata":       nil,
+		"created_at":     event.Timestamp.Format(time.RFC3339),
 	}
 
 	data, err := json.Marshal(payload)
@@ -381,6 +394,7 @@ func (w *MessageWorker) syncToSidecar(ctx context.Context, event *eventbus.AddMe
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Internal "+util.GetManagerAuthToken())
 
 		resp, err := client.Do(req)
 		if err != nil {

@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	MaxMessageCount = 10
+	MaxMessageCount = 20
 
 	McpReadResourcePageSize       = 100 * 1024
 	McpReadResourceStreamDoneFlag = "[DONE]"
@@ -882,6 +882,7 @@ func (l *LLMManager) HandleLLMResponseChannelSync(ctx context.Context, userMessa
 				SampleRate:  l.clientState.OutputAudioFormat.SampleRate,
 				Channels:    l.clientState.OutputAudioFormat.Channels,
 				Timestamp:   time.Now(),
+				IsUpdate:    true, // 更新消息
 			})
 		}
 	} else {
