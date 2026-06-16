@@ -2,7 +2,7 @@
 # syntax=docker/dockerfile:1
 FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
-# 安装 Go 1.24
+# 安装 Go 1.25.0
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     wget \
@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y \
     libc++-dev \
     libc++abi-dev \
     pkg-config \
-    && wget -q https://go.dev/dl/go1.24.4.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz \
-    && rm go1.24.4.linux-amd64.tar.gz \
+    && wget -q https://go.dev/dl/go1.25.0.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.25.0.linux-amd64.tar.gz \
+    && rm go1.25.0.linux-amd64.tar.gz \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH=$PATH:/usr/local/go/bin
