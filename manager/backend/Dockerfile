@@ -21,7 +21,7 @@ WORKDIR /root/
 
 # 从构建阶段复制二进制文件
 COPY --from=builder /app/main .
-COPY --from=builder /app/config ./config
+RUN mkdir -p ./config
 
 # 设置时区
 ENV TZ=Asia/Shanghai

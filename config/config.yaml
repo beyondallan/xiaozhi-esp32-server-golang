@@ -47,8 +47,8 @@ config_provider:          #对应domain/config/中的provider
 
 manager:                  #内控管理配置, 对应domain/config/manager/manager.go
   backend_url: "http://127.0.0.1:8080" #内控地址
-  auth_token: "xiaozhi_admin_secret_key" # 控制台内部HTTP接口调用Token（默认值）
-  endpoint_auth_token: "xiaozhi_mcp_openclaw_secret_key" # MCP/OpenClaw端点JWT签名校验Token（默认值）
+  auth_token: "xiaozhi_admin_secret_key" # 控制台内部HTTP接口调用Token（默认值，可被环境变量 XIAOZHI_INTERNAL_TOKEN 覆盖）
+  endpoint_auth_token: "xiaozhi_mcp_openclaw_secret_key" # MCP/OpenClaw端点JWT签名校验Token（默认值，可被环境变量 XIAOZHI_ENDPOINT_AUTH_TOKEN 覆盖）
   history_timeout: 5s        # HTTP请求超时时间
 
 # 系统提示词，定义AI助手的角色和行为
