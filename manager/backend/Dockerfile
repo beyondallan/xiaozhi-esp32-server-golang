@@ -19,9 +19,9 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /root/
 
-# 从构建阶段复制二进制文件
+# 从构建阶段复制二进制文件和配置文件
 COPY --from=builder /app/main .
-RUN mkdir -p ./config
+COPY --from=builder /app/config/config.json ./config/config.json
 
 # 设置时区
 ENV TZ=Asia/Shanghai
