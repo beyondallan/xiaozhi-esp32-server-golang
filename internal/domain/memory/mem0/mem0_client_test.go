@@ -119,7 +119,7 @@ func TestTiSocialSearchUsesAgentRecallEndpoint(t *testing.T) {
 }
 
 func TestTiSocialSearchResolvesXiaozhiAgentIDToToyID(t *testing.T) {
-	t.Setenv("SIDECAR_URL", "http://xiaozhi-sidecar:8006")
+	t.Setenv("SIDECAR_URL", "http://legacy-device-bridge:18006")
 
 	const toyID = "48bd8eec-c247-4058-a338-c62860079b58"
 	var gotMemoryPath string
@@ -127,7 +127,7 @@ func TestTiSocialSearchResolvesXiaozhiAgentIDToToyID(t *testing.T) {
 	httpClient := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch req.URL.Host {
-			case "xiaozhi-sidecar:8006":
+			case "legacy-device-bridge:18006":
 				sawSidecarResolve = true
 				if req.URL.Path != "/api/internal/memory/agents/1/toy" {
 					t.Fatalf("resolve path = %s", req.URL.Path)
