@@ -178,7 +178,7 @@ func (c *ChatHistoryController) SaveMessage(ctx *gin.Context) {
 }
 
 // InjectMessageInternal handles internal service requests to inject messages to devices.
-// This is called by xiaozhi-sidecar for mood updates and config pushes.
+// This is called by the device integration bridge for mood updates and config pushes.
 // Currently a placeholder that returns success - full implementation pending.
 func (c *ChatHistoryController) InjectMessageInternal(ctx *gin.Context) {
 	deviceName := ctx.Param("device_name")
